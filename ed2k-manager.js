@@ -149,12 +149,13 @@
         const svg = btn.querySelector('svg'); if (svg) { svg.setAttribute('width', Math.round(dim*0.4)); svg.setAttribute('height', Math.round(dim*0.4)); }
     }
 
-    document.body.appendChild(btn);
+    // Don't append button yet - wait to see if there are links
     // apply initial prefs
     try { applyButtonPosition(); applyButtonSize(); } catch(e){}
 
     // modal
     let modal = null;
+    let buttonAppended = false;
 
     function buildModal(items) {
         if (modal) modal.remove();
@@ -483,13 +484,31 @@
     function updateBadge() {
         try {
             const items = findEd2kLinks();
+            
+            // If no links found and button not yet appended, don't show button
+            if (!items || items.length === 0) {
+                if (buttonAppended) {
+                    // Button was visible, hide badge
+                    let badge = btn.querySelector('.ed2k-badge');
+                    if (badge) badge.style.display = 'none';
+                }
+                // Don't append button if no links
+                return;
+            }
+            
+            // Links found: append button if not already done
+            if (!buttonAppended && document.body) {
+                document.body.appendChild(btn);
+                buttonAppended = true;
+            }
+            
+            // Update badge
             let badge = btn.querySelector('.ed2k-badge');
             if (!badge) {
                 badge = document.createElement('div'); badge.className = 'ed2k-badge';
                 btn.style.position = btn.style.position || 'fixed';
                 btn.appendChild(badge);
             }
-            if (!items || items.length === 0) { badge.style.display = 'none'; return; }
             badge.style.display = 'flex';
             // show exact number
             badge.textContent = String(items.length);
