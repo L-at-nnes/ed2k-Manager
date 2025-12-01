@@ -1,69 +1,64 @@
-# ed2k Manager — README (français)
+﻿# ed2k Manager - README (English)
+
+> Need the French version? Read [README_FR.md](README_FR.md) for the complete translation.
 
 [![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/L-at-nnes/ed2k-Manager)
 [![Auto-update](https://img.shields.io/badge/auto--update-enabled-brightgreen.svg)](https://github.com/L-at-nnes/ed2k-Manager/blob/main/ed2k-manager.js)
 
-Objectif
---------
-ed2k Manager est un userscript qui détecte les liens ed2k sur une page et les présente dans une petite interface pour les sélectionner, copier ou exporter.
+## Overview
+ed2k Manager is a lightweight userscript for Tampermonkey or Violentmonkey that scans any web page for `ed2k://` links and presents them in a floating control panel. From there you can search, filter by size, select items, copy the exact list of links, or export the results for later use. The script runs entirely inside the browser, stores preferences locally, and keeps itself up to date.
 
-🚀 Mises à jour automatiques
------------------------------
-Le script se met à jour automatiquement via Tampermonkey dès qu'une nouvelle version est publiée sur GitHub. Aucune action manuelle nécessaire !
+## Features at a Glance
+- Instant detection of every ed2k link on the active page with a badge that shows the number of matches.
+- Clean modal interface with bulk selection, regex search, and min/max size filters that accept human friendly values (`10MB`, `2GB`, etc.).
+- Copy helpers for the checked links or for the whole list, plus CSV export (`name,size,link`).
+- Automatic decoding of encoded filenames along with readable size displays (bytes are shown in the tooltip for accuracy).
+- Context menu (right click the launcher button) to reposition or resize the button and reset preferences.
+- Fully documented codebase in English so outside contributors can understand the logic quickly.
 
-📋 Feuille de route
--------------------
-Consultez la [TODO list](TODO.md) pour voir les fonctionnalités à venir et l'avancement du développement.
+## Requirements
+- A Chromium, Firefox, or Edge browser with Tampermonkey (recommended) or any compatible userscript manager installed.
+- Internet access the first time you install the script so Tampermonkey can fetch `ed2k-manager.js` from GitHub.
 
-Pour les débutants — installation (5 minutes)
----------------------------------------------
+## Installation (about 5 minutes)
+### Method 1 - Direct install (recommended)
+1. Install the Tampermonkey extension for your browser:
+   - [Chrome/Edge](https://chrome.google.com/webstore/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo)
+   - [Firefox](https://addons.mozilla.org/firefox/addon/tampermonkey/)
+2. Click **[Install ed2k Manager](https://raw.githubusercontent.com/L-at-nnes/ed2k-Manager/main/ed2k-manager.js)**.
+3. Tampermonkey opens an install dialog; press **Install**.
+4. Reload any page that contains ed2k links. A small "ed2k" button appears in the lower right corner.
 
-### Méthode 1 : Installation directe (recommandée)
-1. Installer l'extension Tampermonkey pour votre navigateur :
-   - [Chrome/Edge](https://chrome.google.com/webstore/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo) : Chrome Web Store
-   - [Firefox](https://addons.mozilla.org/fr/firefox/addon/tampermonkey/) : Modules complémentaires Firefox
-2. Cliquer sur ce lien : **[Installer ed2k Manager](https://raw.githubusercontent.com/L-at-nnes/ed2k-Manager/main/ed2k-manager.js)**
-3. Tampermonkey détecte automatiquement le script → cliquer sur « Installer »
-4. Rechargez la page que vous souhaitez inspecter : un petit bouton "ed2k" apparaît en bas à droite.
+### Method 2 - Manual install
+1. Install Tampermonkey if you have not already done so.
+2. Open the Tampermonkey dashboard and click **+** / **Add a new script**.
+3. Copy the full contents of [`ed2k-manager.js`](https://raw.githubusercontent.com/L-at-nnes/ed2k-Manager/main/ed2k-manager.js).
+4. Paste the code into the Tampermonkey editor and save (Ctrl+S).
+5. Reload any target page; the "ed2k" launcher button becomes available.
 
-### Méthode 2 : Installation manuelle
-1. Installer Tampermonkey (voir méthode 1)
-2. Ouvrir Tampermonkey → cliquer sur « + » ou « Add a new script »
-3. Copier le contenu de [`ed2k-manager.js`](https://raw.githubusercontent.com/L-at-nnes/ed2k-Manager/main/ed2k-manager.js)
-4. Coller dans l'éditeur de script Tampermonkey, sauvegarder (Ctrl+S)
-5. Rechargez la page : le bouton "ed2k" apparaît en bas à droite
+Tampermonkey automatically checks GitHub for new releases, so you do not need to reinstall after future updates.
 
-✅ **Les mises à jour se feront automatiquement** : Tampermonkey vérifie régulièrement les nouvelles versions sur GitHub.
+## Using ed2k Manager
+1. Browse to a page that lists ed2k links and click the floating "ed2k" button.
+2. Review the list of detected links in the modal window. The badge reflects the total number of links.
+3. Type text or a regex such as `/S01E02/i` in the search bar to narrow the list. Use **Min/Max** inputs to filter by size.
+4. Select individual rows or click **Select all**. The footer shows how many items are selected.
+5. Choose **Copy selection** to send the selected links to the clipboard, **Copy all** for every link, or **Export CSV** to download `ed2k-links.csv`.
+6. Close the window by clicking **Close**, pressing **Esc**, or toggling the launcher button again.
 
-Utilisation simple
-------------------
-- Ouvrir une page contenant des liens ed2k.
-- Cliquer sur le bouton "ed2k" : la fenêtre s'ouvre et liste les liens.
-- Chercher : tapez du texte ou une regex (ex : `/S01E02/i`) dans la barre de recherche.
-- Filtrer par taille : utiliser les champs Min / Max (ex : `10MB`, `2GB`).
-- Sélectionner : cocher les fichiers souhaités ou cliquer sur « Tout sélectionner ».
-- Copier : « Copier sélection » copie les liens cochés dans le presse-papiers. « Copier tout » copie tous les liens trouvés.
-- Export : « Exporter CSV » télécharge un fichier `ed2k-links.csv` (colonnes : name,size,link).
-- Fermer : recliquer sur le bouton, cliquer sur « Fermer » ou presser `Esc`.
+## Automatic Updates
+The script is served directly from GitHub. Tampermonkey checks the canonical URL on a schedule and replaces the local copy whenever a new version is published. As long as the userscript is enabled, you will silently receive the latest UI tweaks and bug fixes.
 
-Remarques pratiques
--------------------
-- Le badge sur le bouton affiche le nombre exact de liens détectés.
-- Le nom des fichiers est décodé automatiquement (URL-decoded) quand c'est possible.
-- Les tailles sont stockées en octets ; affichées en MB (2 décimales). Le tooltip montre les octets bruts.
-- Le menu contextuel (clic droit sur le bouton) permet de changer position/taille du bouton et de réinitialiser les réglages.
+## Troubleshooting
+- **Button does not show:** Confirm the script is enabled in Tampermonkey and reload the page. Some sites require a hard refresh (Ctrl+F5).
+- **Clipboard copy fails:** Refresh the tab; a few browsers restrict clipboard access until the page gains focus after installing a script.
+- **Layout issues on very long lists:** Keep an eye on the [TODO list](TODO.md) where UI refactors and performance work are tracked.
 
-Dépannage rapide
-----------------
-- Si vous ne voyez pas le bouton : vérifiez que le script est activé dans Tampermonkey et que la page a été rechargée.
-- Si la copie ne fonctionne pas : essayez un rafraîchissement, certains sites ou navigateurs restreignent l'accès au presse-papiers.
+## Roadmap and Community
+All planned phases are tracked in [`TODO.md`](TODO.md), from the UI overhaul to history tabs, duplicate detection, statistics, and more. Feel free to open an issue to discuss ideas or report bugs, and every suggestion helps shape the next milestone.
 
-Contribuer
-----------
-Tout le monde peut contribuer : suggestions, rapports de bugs, améliorations ou corrections.
-Tout le code est documenté en anglais pour faciliter la compréhension et la contribution des développeurs (commentaires et docstrings en anglais). N'hésitez pas à ouvrir une issue ou une pull request.
+## Contributing
+Pull requests are welcome for bug fixes, enhancements, documentation, or translation improvements. The code comments and docstrings are written in English. If you add UI strings, please keep them easy to translate, and include screenshots or short clips when proposing interface changes.
 
--------------------------
-
-
-
+---
+Happy collecting, and thank you for helping the ed2k ecosystem stay organized!
