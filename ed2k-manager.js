@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         ed2k Manager
 // @namespace    Userscript
-// @version      1.0.0
-// @description  Discretely reveal all ed2k links on a page, show them in a pretty table with checkboxes, select/deselect all, copy selected, dark/light themes.
+// @version      1.2.0
+// @description  Reveal ed2k links on any page with robust ed2k decoding and advanced tome/integrale extraction.
 // @author       L@nnes
 // @match        *://*/*
 // @grant        GM_setClipboard
@@ -25,8 +25,10 @@
     // keep only button visibility in prefs; theme fixed to ocean
     const prefs = Object.assign({ showButton: true, btnPos: 'bottom-right' }, loadPrefs());
 
-    // regex for ed2k links
-    const ED2K_REGEX = /ed2k:\/\/\|file\|([^|]+)\|([0-9]+)\|([a-fA-F0-9]{32})\|/g;
+    // ed2k detection: capture full candidates, then normalize/parse
+    const ED2K_PREFIX = 'ed2k://';
+    const ED2K_BASE_REGEX = /^ed2k:\/\/\|file\|([^|]+)\|([0-9]+)\|([a-fA-F0-9]{32})\|/i;
+    const ED2K_CANDIDATE_REGEX = /ed2k:\/\/[^\s<>"']+/gi;
 
     function decodeFileName(raw) {
         try {
@@ -38,34 +40,86 @@
         } catch (e) { return raw; }
     }
 
-    function findEd2kLinks() {
-        const found = new Map(); // key by full link text
+    function safeDecodeURIComponent(value) {
+        try { return decodeURIComponent(value); } catch (e) { return value; }
+    }
 
-        // 1) <a href="ed2k:...">
-        document.querySelectorAll('a[href^="ed2k:"]') .forEach(a => {
-            const href = a.getAttribute('href');
-            const m = href.match(/^ed2k:\/\/\|file\|([^|]+)\|([0-9]+)\|([a-fA-F0-9]{32})\|/);
-            if (m) {
-                const name = decodeFileName(m[1]);
-                found.set(href, { name, link: href, size: m[2], hash: m[3] });
-            }
+    function decodeEd2kLink(rawLink) {
+        const trimmed = String(rawLink || '').trim();
+        if (!trimmed || trimmed.indexOf('%') === -1) return trimmed;
+        // Many sites encode pipes as %7C; decode them first, then try full decode.
+        const pipeDecoded = trimmed.replace(/%7C/gi, '|');
+        return safeDecodeURIComponent(pipeDecoded);
+    }
+
+    function stripTrailingPunctuation(candidate) {
+        // Remove common trailing punctuation that may follow a link in plain text.
+        return String(candidate || '').replace(/[)\].,!?:;]+$/g, '');
+    }
+
+    function ensureTrailingSlash(link) {
+        if (!link) return link;
+        return link.endsWith('/') ? link : `${link}/`;
+    }
+
+    function buildItemFromLink(rawLink) {
+        const cleaned = stripTrailingPunctuation(rawLink);
+        if (!cleaned || cleaned.toLowerCase().indexOf(ED2K_PREFIX) !== 0) return null;
+        const decoded = ensureTrailingSlash(decodeEd2kLink(cleaned));
+        const normalizedLink = decoded.replace(/^ed2k:\/\//i, ED2K_PREFIX);
+        const match = normalizedLink.match(ED2K_BASE_REGEX);
+        if (!match) return null;
+        const name = decodeFileName(match[1]);
+        const tomeInfo = extractTomeNumber(name);
+        return {
+            name,
+            link: normalizedLink,
+            size: match[2],
+            hash: String(match[3] || '').toLowerCase(),
+            tomeDisplay: tomeInfo.display,
+            tomeSortValue: tomeInfo.sortValue,
+        };
+    }
+
+    function findEd2kLinks() {
+        const found = new Map(); // key by normalized link
+
+        function addCandidate(rawLink) {
+            const item = buildItemFromLink(rawLink);
+            if (!item) return;
+            if (!found.has(item.link)) found.set(item.link, item);
+        }
+
+        // 1) anchors with ed2k hrefs (including percent-encoded pipes)
+        document.querySelectorAll('a[href]').forEach(a => {
+            const href = a.getAttribute('href') || '';
+            if (href.toLowerCase().indexOf(ED2K_PREFIX) !== 0) return;
+            addCandidate(href);
         });
 
         // 2) plain text nodes containing ed2k links
-        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
-        let node;
-        while (node = walker.nextNode()) {
-            const text = node.nodeValue;
-            if (!text || text.indexOf('ed2k://') === -1) continue;
-            let m;
-            ED2K_REGEX.lastIndex = 0;
-            while ((m = ED2K_REGEX.exec(text)) !== null) {
-                const full = m[0];
-                if (!found.has(full)) {
-                    const name = decodeFileName(m[1]);
-                    found.set(full, { name, link: full, size: m[2], hash: m[3] });
+        const walker = document.createTreeWalker(
+            document.body,
+            NodeFilter.SHOW_TEXT,
+            {
+                acceptNode(node) {
+                    const parent = node.parentElement;
+                    if (!parent) return NodeFilter.FILTER_REJECT;
+                    const tag = parent.tagName ? parent.tagName.toLowerCase() : '';
+                    if (tag === 'script' || tag === 'style' || tag === 'textarea' || tag === 'noscript') {
+                        return NodeFilter.FILTER_REJECT;
+                    }
+                    return NodeFilter.FILTER_ACCEPT;
                 }
             }
+        );
+        let node;
+        while ((node = walker.nextNode())) {
+            const text = node.nodeValue;
+            if (!text || text.toLowerCase().indexOf(ED2K_PREFIX) === -1) continue;
+            const matches = text.match(ED2K_CANDIDATE_REGEX);
+            if (!matches) continue;
+            matches.forEach(addCandidate);
         }
 
         return Array.from(found.values());
@@ -81,6 +135,7 @@
     .ed2k-rev-modal{position:fixed;right:24px;bottom:88px;z-index:9999998;width:880px;max-width:calc(100% - 48px);max-height:80vh;background:#07101a;border-radius:12px;padding:14px;box-shadow:0 20px 60px rgba(2,6,23,0.8);overflow:hidden;display:flex;flex-direction:column;color:#e6eef8;font-family:system-ui,Segoe UI,Roboto,Arial}
     .ed2k-rev-header{display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.04);} 
     .ed2k-rev-title{font-weight:700;color:#7dd3fc;font-size:14px}
+    .ed2k-rev-selection{font-size:12px;color:#bfefff;opacity:0.95;padding:4px 8px;border:1px solid rgba(255,255,255,0.06);border-radius:999px;background:rgba(255,255,255,0.04)}
     .ed2k-rev-toolbar{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
     .ed2k-rev-search{padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.02);color:#cfe8f6;min-width:260px}
     .ed2k-size-input{padding:6px 8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.02);color:#cfe8f6;width:110px}
@@ -165,6 +220,8 @@
         const header = document.createElement('div'); header.className = 'ed2k-rev-header';
         const title = document.createElement('div'); title.className = 'ed2k-rev-title'; title.textContent = `ed2k — ${items.length} trouvé(s)`;
         header.appendChild(title);
+        const selectionInfo = document.createElement('div'); selectionInfo.className = 'ed2k-rev-selection'; selectionInfo.textContent = 'Sélection: 0';
+        header.appendChild(selectionInfo);
 
             const toolbar = document.createElement('div'); toolbar.className = 'ed2k-rev-toolbar';
             
@@ -174,6 +231,7 @@
     const copyBtn = document.createElement('button'); copyBtn.className = 'ed2k-btn primary'; copyBtn.textContent = 'Copier sélection';
     const copyAllBtn = document.createElement('button'); copyAllBtn.className = 'ed2k-btn'; copyAllBtn.textContent = 'Copier tout';
     const exportBtn = document.createElement('button'); exportBtn.className = 'ed2k-btn'; exportBtn.textContent = 'Exporter CSV';
+    const exportCollectionBtn = document.createElement('button'); exportCollectionBtn.className = 'ed2k-btn'; exportCollectionBtn.textContent = 'Exporter .emulecollection';
 
     // size filters UI
     const sizeRow = document.createElement('div'); sizeRow.className = 'ed2k-size-row';
@@ -185,15 +243,90 @@
     toolbar.appendChild(search);
     // put size filters next to search
     toolbar.appendChild(sizeRow);
-    toolbar.appendChild(selectAllBtn); toolbar.appendChild(deselectAllBtn); toolbar.appendChild(copyBtn); toolbar.appendChild(copyAllBtn); toolbar.appendChild(exportBtn);
+    toolbar.appendChild(selectAllBtn); toolbar.appendChild(deselectAllBtn); toolbar.appendChild(copyBtn); toolbar.appendChild(copyAllBtn); toolbar.appendChild(exportBtn); toolbar.appendChild(exportCollectionBtn);
         header.appendChild(toolbar);
 
         const list = document.createElement('div'); list.className = 'ed2k-rev-list';
 
     const table = document.createElement('table'); table.className = 'ed2k-table';
-    const thead = document.createElement('thead'); thead.innerHTML = '<tr><th style="width:36px"><input type="checkbox" id="ed2k-master"></th><th data-col="name">Nom</th><th data-col="size" style="width:120px;text-align:right">Taille</th><th style="width:360px">Lien</th></tr>';
+    const thead = document.createElement('thead'); thead.innerHTML = '<tr><th style="width:36px"><input type="checkbox" id="ed2k-master"></th><th data-col="tome" style="width:60px;text-align:center">Tome</th><th data-col="name">Nom</th><th data-col="size" style="width:120px;text-align:right">Taille</th><th style="width:360px">Lien</th></tr>';
         const tbody = document.createElement('tbody');
+
+        // Selection state persists across re-renders and enables Shift+click range selection.
+        const selectedLinks = new Set();
+        let lastClickedLink = null;
+
+        function getVisibleCheckboxes() {
+            return Array.from(modal.querySelectorAll('tbody input.ed2k-row-cb'));
+        }
+
+        function getSelectedItems() {
+            return items.filter(it => selectedLinks.has(it.link));
+        }
+
+        function setCheckedAndTrack(cb, checked) {
+            cb.checked = checked;
+            const link = cb.dataset.link;
+            if (!link) return;
+            if (checked) {
+                selectedLinks.add(link);
+            } else {
+                selectedLinks.delete(link);
+            }
+        }
+
+        function syncSelectedFromVisible() {
+            getVisibleCheckboxes().forEach(cb => {
+                const link = cb.dataset.link;
+                if (!link) return;
+                if (cb.checked) {
+                    selectedLinks.add(link);
+                } else {
+                    selectedLinks.delete(link);
+                }
+            });
+        }
+
+        function setAllVisible(checked) {
+            getVisibleCheckboxes().forEach(cb => setCheckedAndTrack(cb, checked));
+            updateMasterCheckbox();
+        }
+
+        function getVisibleIndexByLink(link) {
+            if (!link) return -1;
+            const boxes = getVisibleCheckboxes();
+            return boxes.findIndex(cb => cb.dataset.link === link);
+        }
+
+        function applyRangeSelection(startIdx, endIdx, checked) {
+            const boxes = getVisibleCheckboxes();
+            if (!boxes.length) return;
+            const start = Math.max(0, Math.min(startIdx, endIdx));
+            const end = Math.min(boxes.length - 1, Math.max(startIdx, endIdx));
+            for (let i = start; i <= end; i += 1) {
+                setCheckedAndTrack(boxes[i], checked);
+            }
+        }
+
+        function handleCheckboxClick(cb, evt) {
+            const boxes = getVisibleCheckboxes();
+            const targetIdx = boxes.indexOf(cb);
+            const targetChecked = !!cb.checked;
+            if (evt && evt.shiftKey && lastClickedLink) {
+                const anchorIdx = getVisibleIndexByLink(lastClickedLink);
+                if (anchorIdx !== -1 && targetIdx !== -1) {
+                    applyRangeSelection(anchorIdx, targetIdx, targetChecked);
+                    updateMasterCheckbox();
+                    return;
+                }
+            }
+            setCheckedAndTrack(cb, targetChecked);
+            updateMasterCheckbox();
+        }
+
         function renderRows(query) {
+            // Persist any manual checkbox changes before rebuilding the table.
+            syncSelectedFromVisible();
             tbody.innerHTML = '';
             const frag = document.createDocumentFragment();
             const filterFn = makeFilterFromQuery(query || '');
@@ -208,9 +341,25 @@
                 if (maxBytes != null && sizeNum > maxBytes) return false;
                 return true;
             }).slice();
-            filtered.sort((a,b)=>{
+            filtered.sort((a, b) => {
+                if (sortState.col === 'tome') {
+                    const aMissing = !Number.isFinite(a.tomeSortValue);
+                    const bMissing = !Number.isFinite(b.tomeSortValue);
+                    // Always keep items without tome information at the end.
+                    if (aMissing && !bMissing) return 1;
+                    if (bMissing && !aMissing) return -1;
+                    if (!aMissing && !bMissing && a.tomeSortValue !== b.tomeSortValue) {
+                        return sortState.dir * (a.tomeSortValue - b.tomeSortValue);
+                    }
+                    return a.name.localeCompare(b.name);
+                }
                 if (sortState.col === 'name') return sortState.dir * a.name.localeCompare(b.name);
-                if (sortState.col === 'size') return sortState.dir * ( (parseInt(a.size||0,10) || 0) - (parseInt(b.size||0,10) || 0) );
+                if (sortState.col === 'size') {
+                    const aSize = parseInt(a.size || 0, 10) || 0;
+                    const bSize = parseInt(b.size || 0, 10) || 0;
+                    if (aSize !== bSize) return sortState.dir * (aSize - bSize);
+                    return a.name.localeCompare(b.name);
+                }
                 return 0;
             });
             // update title count dynamically
@@ -219,15 +368,40 @@
                 const tr = document.createElement('tr');
                 const cbTd = document.createElement('td');
                 const cb = document.createElement('input'); cb.type = 'checkbox'; cb.dataset.link = it.link; cb.className = 'ed2k-row-cb';
+                cb.checked = selectedLinks.has(it.link);
+                cb.addEventListener('click', (evt) => {
+                    handleCheckboxClick(cb, evt);
+                    lastClickedLink = cb.dataset.link || null;
+                });
                 cbTd.appendChild(cb);
-                const nameTd = document.createElement('td'); nameTd.innerHTML = `<div class='ed2k-row-name'>${escapeHtml(it.name)}</div>`;
+                const tomeTd = document.createElement('td');
+                tomeTd.style.textAlign = 'center';
+                tomeTd.innerHTML = `<div style='font-weight:600;color:#8fe7ff'>${escapeHtml(it.tomeDisplay || '')}</div>`;
+
+                const nameTd = document.createElement('td');
+                const nameDiv = document.createElement('div');
+                nameDiv.className = 'ed2k-row-name';
+                nameDiv.textContent = it.name;
+                nameDiv.style.cursor = 'pointer';
+                nameDiv.title = 'Cliquer pour copier le lien';
+                nameDiv.addEventListener('click', async (evt) => {
+                    cb.checked = !cb.checked;
+                    handleCheckboxClick(cb, evt);
+                    lastClickedLink = cb.dataset.link || null;
+                    const copied = await copyTextToClipboard(it.link);
+                    if (!copied) return;
+                    const origBg = tr.style.background;
+                    tr.style.background = 'rgba(95, 214, 246, 0.15)';
+                    setTimeout(() => { tr.style.background = origBg; }, 300);
+                });
+                nameTd.appendChild(nameDiv);
                 const sizeTd = document.createElement('td'); sizeTd.style.textAlign = 'right';
                 // show size in MB (fixed) and keep raw bytes in tooltip
                 const _bytes_val = parseInt(it.size || 0, 10) || 0;
                 const _mb_display = _bytes_val ? ( (_bytes_val / (1024*1024)).toFixed(2) + ' MB') : '';
                 sizeTd.innerHTML = `<div style='font-weight:600;color:#cfe8f6' title='${_bytes_val} bytes'>${_mb_display}</div>`;
                 const linkTd = document.createElement('td'); linkTd.innerHTML = `<a class='ed2k-link' href='${it.link}' target='_blank' rel='noopener noreferrer'>${shorten(it.link)}</a>`;
-                tr.appendChild(cbTd); tr.appendChild(nameTd); tr.appendChild(sizeTd); tr.appendChild(linkTd);
+                tr.appendChild(cbTd); tr.appendChild(tomeTd); tr.appendChild(nameTd); tr.appendChild(sizeTd); tr.appendChild(linkTd);
                 frag.appendChild(tr);
             });
             tbody.appendChild(frag);
@@ -266,10 +440,15 @@
         document.body.appendChild(modal);
 
         // helpers
-        function getVisibleCheckboxes() { return Array.from(modal.querySelectorAll('tbody input.ed2k-row-cb')); }
+        function updateSelectionInfo() {
+            const count = getSelectedItems().length;
+            selectionInfo.textContent = `Sélection: ${count}`;
+        }
+
         function updateMasterCheckbox() {
             const master = modal.querySelector('#ed2k-master');
             const boxes = getVisibleCheckboxes();
+            updateSelectionInfo();
             if (!boxes.length) { master.checked = false; master.indeterminate = false; return; }
             const checked = boxes.filter(x => x.checked).length;
             master.checked = checked === boxes.length;
@@ -279,54 +458,52 @@
         // listeners
         modal.querySelector('#ed2k-master').addEventListener('change', (e) => {
             const v = e.target.checked;
-            getVisibleCheckboxes().forEach(cb => cb.checked = v);
+            if (!v) selectedLinks.clear();
+            setAllVisible(v);
         });
 
-        modal.addEventListener('change', (e) => { if (e.target.classList && e.target.classList.contains('ed2k-row-cb')) updateMasterCheckbox(); });
+        modal.addEventListener('change', (e) => {
+            if (e.target.classList && e.target.classList.contains('ed2k-row-cb')) {
+                setCheckedAndTrack(e.target, e.target.checked);
+                updateMasterCheckbox();
+            }
+        });
 
-        selectAllBtn.addEventListener('click', () => getVisibleCheckboxes().forEach(cb => cb.checked = true) );
-        deselectAllBtn.addEventListener('click', () => getVisibleCheckboxes().forEach(cb => cb.checked = false) );
+        selectAllBtn.addEventListener('click', () => setAllVisible(true) );
+        deselectAllBtn.addEventListener('click', () => {
+            selectedLinks.clear();
+            setAllVisible(false);
+        });
 
         copyBtn.addEventListener('click', async () => {
-            const boxes = Array.from(modal.querySelectorAll('tbody input.ed2k-row-cb:checked'));
-            if (!boxes.length) { flashButton(copyBtn, 'Aucune sélection'); return; }
-            const links = boxes.map(b => b.dataset.link).join('\n');
-            try {
-                if (navigator.clipboard && navigator.clipboard.writeText) {
-                    await navigator.clipboard.writeText(links);
-                } else if (typeof GM_setClipboard !== 'undefined') {
-                    GM_setClipboard(links);
-                } else {
-                    fallbackCopyTextToClipboard(links);
-                }
-                flashButton(copyBtn, 'Copié!');
-                // close modal after copying selection
-                setTimeout(() => { try { modal.remove(); modal = null; } catch(e){} }, 300);
-            } catch (err) { flashButton(copyBtn, 'Erreur'); }
+            const selectedItems = getSelectedItems();
+            if (!selectedItems.length) { flashButton(copyBtn, 'Aucune sélection'); return; }
+            const links = selectedItems.map(it => it.link).join('\n');
+            const copied = await copyTextToClipboard(links);
+            if (!copied) { flashButton(copyBtn, 'Erreur'); return; }
+            flashButton(copyBtn, 'Copié!');
+            // close modal after copying selection
+            setTimeout(() => { try { modal.remove(); modal = null; } catch(e){} }, 300);
         });
 
         // copy all links (all items, regardless of checkbox)
         copyAllBtn.addEventListener('click', async () => {
             const links = items.map(it => it.link).join('\n');
             if (!links) { flashButton(copyAllBtn, 'Aucun lien'); return; }
-            try {
-                if (navigator.clipboard && navigator.clipboard.writeText) {
-                    await navigator.clipboard.writeText(links);
-                } else if (typeof GM_setClipboard !== 'undefined') {
-                    GM_setClipboard(links);
-                } else {
-                    fallbackCopyTextToClipboard(links);
-                }
-                flashButton(copyAllBtn, 'Copié tout!');
-                setTimeout(() => { try { modal.remove(); modal = null; } catch(e){} }, 300);
-            } catch (err) { flashButton(copyAllBtn, 'Erreur'); }
+            const copied = await copyTextToClipboard(links);
+            if (!copied) { flashButton(copyAllBtn, 'Erreur'); return; }
+            flashButton(copyAllBtn, 'Copié tout!');
+            setTimeout(() => { try { modal.remove(); modal = null; } catch(e){} }, 300);
         });
 
         // export CSV
         exportBtn.addEventListener('click', () => {
             try {
+                const selectedItems = getSelectedItems();
+                const exportItems = selectedItems.length ? selectedItems : items.slice();
+                if (!exportItems.length) { flashButton(exportBtn, 'Aucun lien'); return; }
                 const header = ['name','size','link'];
-                const rows = items.map(it => ["\""+String(it.name).replace(/"/g,'""')+"\"", it.size, it.link].join(','));
+                const rows = exportItems.map(it => ["\""+String(it.name).replace(/"/g,'""')+"\"", it.size, it.link].join(','));
                 const csv = [header.join(','), ...rows].join('\n');
                 const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
                 const url = URL.createObjectURL(blob);
@@ -334,6 +511,130 @@
                 flashButton(exportBtn, 'Exporté');
             } catch (e) { flashButton(exportBtn, 'Erreur'); }
         });
+
+        // export .emulecollection (binary) — exports selection if any, otherwise all
+        exportCollectionBtn.addEventListener('click', () => {
+            try {
+                const selectedItems = getSelectedItems();
+                const exportItems = selectedItems.length ? selectedItems : items.slice();
+                const limitedItems = exportItems.slice(0, 1024);
+                const collectionBytes = buildEmuleCollection(limitedItems);
+                if (!collectionBytes) {
+                    flashButton(exportCollectionBtn, 'Aucun lien valide');
+                    return;
+                }
+                const blob = new Blob([collectionBytes], { type: 'application/octet-stream' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'ed2k-links.emulecollection';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+                flashButton(exportCollectionBtn, 'Exporté');
+            } catch (e) {
+                flashButton(exportCollectionBtn, 'Erreur');
+            }
+        });
+
+        function buildEmuleCollection(sourceItems) {
+            if (!sourceItems || !sourceItems.length) return null;
+            const entries = [];
+            sourceItems.forEach(it => {
+                const sizeNum = parseInt(it.size || 0, 10) || 0;
+                const hashBytes = hexToBytes16(it.hash);
+                if (!it.name || !sizeNum || !hashBytes) return;
+                const rootHashMatch = String(it.link || '').match(/\|h=([^|]+)\|/i);
+                const rootHash = rootHashMatch ? rootHashMatch[1] : '';
+                entries.push({
+                    name: it.name,
+                    size: sizeNum,
+                    hashBytes,
+                    rootHash,
+                });
+            });
+            if (!entries.length) return null;
+
+            const bytes = [];
+            const pushByte = (v) => { bytes.push(v & 0xFF); };
+            const pushBytes = (arr) => { for (let i = 0; i < arr.length; i += 1) pushByte(arr[i]); };
+            const writeUint16LE = (v) => { pushByte(v); pushByte(v >>> 8); };
+            const writeUint32LE = (v) => {
+                const n = v >>> 0;
+                pushByte(n);
+                pushByte(n >>> 8);
+                pushByte(n >>> 16);
+                pushByte(n >>> 24);
+            };
+            const writeUint64LE = (v) => {
+                let big = BigInt(v);
+                if (big < 0) big = 0n;
+                for (let i = 0n; i < 8n; i += 1n) {
+                    pushByte(Number((big >> (8n * i)) & 0xFFn));
+                }
+            };
+            const encoder = new TextEncoder();
+            const writeString = (str) => {
+                const data = encoder.encode(String(str || ''));
+                const len = Math.min(data.length, 0xFFFF);
+                writeUint16LE(len);
+                pushBytes(data.slice(0, len));
+            };
+
+            // Header
+            writeUint32LE(0x02); // version
+            writeUint32LE(0x00); // header tag count
+            writeUint32LE(entries.length);
+
+            // File entries
+            entries.forEach(entry => {
+                const sizeBig = BigInt(entry.size);
+                const use64 = sizeBig > 0xFFFFFFFFn;
+                const tagCount = entry.rootHash ? 4 : 3;
+                writeUint32LE(tagCount);
+
+                // FT_FILEHASH (0x28) — TAGTYPE_HASH (0x81)
+                pushByte(0x81);
+                pushByte(0x28);
+                pushBytes(entry.hashBytes);
+
+                // FT_FILESIZE (0x02) — uint32 (0x83) or uint64 (0x8b)
+                pushByte(use64 ? 0x8B : 0x83);
+                pushByte(0x02);
+                if (use64) {
+                    writeUint64LE(sizeBig);
+                } else {
+                    writeUint32LE(Number(sizeBig));
+                }
+
+                // FT_FILENAME (0x01) — TAGTYPE_STRING (0x82)
+                pushByte(0x82);
+                pushByte(0x01);
+                writeString(entry.name);
+
+                // FT_AICH_FILEHASH (0x27) — TAGTYPE_STRING (0x82)
+                if (entry.rootHash) {
+                    pushByte(0x82);
+                    pushByte(0x27);
+                    writeString(entry.rootHash);
+                }
+            });
+
+            return new Uint8Array(bytes);
+        }
+
+        function hexToBytes16(hex) {
+            const norm = String(hex || '').toLowerCase().replace(/[^0-9a-f]/g, '');
+            if (norm.length !== 32) return null;
+            const out = new Uint8Array(16);
+            for (let i = 0; i < 16; i += 1) {
+                const byte = parseInt(norm.slice(i * 2, (i * 2) + 2), 16);
+                if (Number.isNaN(byte)) return null;
+                out[i] = byte;
+            }
+            return out;
+        }
 
         // enhanced search: support regex when value is like /pattern/flags
         function makeFilterFromQuery(q){
@@ -379,8 +680,9 @@
             return Math.round(val);
         }
 
-    // sorting state
-    let sortState = { col: 'name', dir: 1 };
+    // sorting state (default: tome descending)
+    let sortState = { col: 'tome', dir: -1 };
+    function defaultDirFor(col) { return col === 'tome' ? -1 : 1; }
     // wire search input and size inputs to rendering (supports regex via makeFilterFromQuery)
     const debRender = debounce(() => renderRows(search.value), 120);
     search.addEventListener('input', debRender);
@@ -393,7 +695,15 @@
             const col = h.getAttribute('data-col');
             if (!col) return;
             h.style.cursor = 'pointer';
-            h.addEventListener('click', () => { if (sortState.col === col) sortState.dir *= -1; else { sortState.col = col; sortState.dir = 1;} renderRows(search.value); });
+            h.addEventListener('click', () => {
+                if (sortState.col === col) {
+                    sortState.dir *= -1;
+                } else {
+                    sortState.col = col;
+                    sortState.dir = defaultDirFor(col);
+                }
+                renderRows(search.value);
+            });
         });
 
         // handle Escape to close
@@ -414,12 +724,144 @@
         setTimeout(() => el.textContent = orig, 1100);
     }
 
+    async function copyTextToClipboard(text) {
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(text);
+                return true;
+            }
+        } catch (e) {}
+        try {
+            if (typeof GM_setClipboard !== 'undefined') {
+                GM_setClipboard(text);
+                return true;
+            }
+        } catch (e) {}
+        try {
+            fallbackCopyTextToClipboard(text);
+            return true;
+        } catch (e) {}
+        return false;
+    }
+
     function fallbackCopyTextToClipboard(text) {
         const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch (e) {} ta.remove();
     }
 
     function prettySize(bytes) {
         try { bytes = parseInt(bytes, 10); if (isNaN(bytes)) return ''; const units = ['B','KB','MB','GB','TB']; let i=0; while(bytes>=1024 && i<units.length-1){bytes/=1024;i++} return `${bytes.toFixed( (i===0)?0:2 )} ${units[i]}` } catch(e){return ''}
+    }
+
+    // Tome / volume extraction: explicit patterns first, then safe inference.
+    const MAX_TOME_NUMBER = 299;
+    const INTEGRALE_SORT_VALUE = MAX_TOME_NUMBER + 1000;
+    const PACK_SORT_VALUE = MAX_TOME_NUMBER + 900;
+    const INTEGRALE_RE = /\b(?:int[eé]grale?s?|integral(?:e)?|omnibus|complete|collection)\b/i;
+    const PACK_RE = /\b(?:bdpack|pack)\b/i;
+    const RANGE_RE = /\b0*([0-9]{1,3})\s*(?:a|à|to|\-)\s*0*([0-9]{1,3})\b/i;
+    const DASH_NORMALIZE_RE = /[\u2010-\u2015]/g; // normalize fancy dashes to '-'
+
+    const EXPLICIT_TOME_PATTERNS = [
+        // Hors-série / HS
+        { re: /(?:^|[\s._\-–—\[(])(?:hs|hors\s*-?\s*s(?:erie|érie))\s*0*([0-9]{1,3})(?!\d)/i, prefix: 'HS', bonus: 200 },
+        // Tome / volume words
+        { re: /(?:^|[\s._\-–—\[(])(?:tome|volume|vol(?:ume)?\.?)\s*0*([0-9]{1,3})(?!\d)/i, prefix: 'T', bonus: 180 },
+        // Short markers: T01, V02, #03
+        { re: /(?:^|[\s._\-–—\[(])(?:t|v|#)\s*0*([0-9]{1,3})(?!\d)/i, prefix: 'T', bonus: 160 },
+    ];
+
+    function isLikelyYear(n) { return n >= 1900 && n <= 2099; }
+    function isValidTomeNumber(n) {
+        return Number.isFinite(n) && n >= 1 && n <= MAX_TOME_NUMBER && !isLikelyYear(n);
+    }
+
+    function normalizeForScan(name) {
+        let s = String(name || '');
+        // Remove common archive extensions to avoid confusing trailing numbers.
+        s = s.replace(/\.(?:cbr|cbz|rar|zip|7z|pdf)$/i, '');
+        // Normalize dashes and remove diacritics when supported.
+        s = s.replace(DASH_NORMALIZE_RE, '-');
+        try { s = s.normalize('NFD').replace(/[\u0300-\u036f]/g, ''); } catch (e) {}
+        // Unify frequent separators but keep overall structure.
+        s = s.replace(/[_]+/g, ' ');
+        s = s.replace(/[.]+/g, ' ');
+        s = s.replace(/\s+/g, ' ').trim();
+        return s.toLowerCase();
+    }
+
+    function formatTome(prefix, n) {
+        return { display: prefix + String(n).padStart(2, '0'), sortValue: n };
+    }
+
+    function extractTomeNumber(name) {
+        if (!name) return { display: '', sortValue: Infinity };
+        const scan = normalizeForScan(name);
+        if (!scan) return { display: '', sortValue: Infinity };
+
+        // 1) Integrales / packs (treated as a special "tome" above normal volumes).
+        if (INTEGRALE_RE.test(scan)) {
+            return { display: 'INT', sortValue: INTEGRALE_SORT_VALUE };
+        }
+        if (PACK_RE.test(scan) && RANGE_RE.test(scan)) {
+            return { display: 'PACK', sortValue: PACK_SORT_VALUE };
+        }
+
+        // 2) Explicit tome markers (most reliable).
+        for (const { re, prefix } of EXPLICIT_TOME_PATTERNS) {
+            const match = scan.match(re);
+            if (!match || !match[1]) continue;
+            const num = parseInt(match[1], 10);
+            if (!isValidTomeNumber(num)) continue;
+            return formatTome(prefix, num);
+        }
+
+        // 3) Structured hints like "02 (sur 3)" or "02/03".
+        const surMatch = scan.match(/(?:^|[^a-z0-9])0*([0-9]{1,3})\s*[\s._\-–—()[\]]*(?:sur|\/)\s*0*([0-9]{1,3})(?!\d)/i);
+        if (surMatch && surMatch[1]) {
+            const num = parseInt(surMatch[1], 10);
+            if (isValidTomeNumber(num)) return formatTome('T', num);
+        }
+
+        // 4) Safe inference: pick the best separated number in range.
+        const candidateRe = /(^|[^a-z0-9])(0*[0-9]{1,3})(?=([^a-z0-9]|$))/gi;
+        let best = null;
+        let m;
+        while ((m = candidateRe.exec(scan)) !== null) {
+            const rawDigits = m[2];
+            const num = parseInt(rawDigits, 10);
+            if (!isValidTomeNumber(num)) continue;
+
+            const startIdx = m.index + (m[1] ? m[1].length : 0);
+            const endIdx = startIdx + rawDigits.length;
+            const prevChar = startIdx > 0 ? scan[startIdx - 1] : ' ';
+            const nextChar = endIdx < scan.length ? scan[endIdx] : ' ';
+            const beforeWindow = scan.slice(Math.max(0, startIdx - 14), startIdx);
+            const afterWindow = scan.slice(endIdx, Math.min(scan.length, endIdx + 14));
+
+            let score = 0;
+            // Numbers near the start are more likely to be tomes.
+            if (startIdx < 48) score += 20;
+            // Prefer clearly separated tokens.
+            if (/[^a-z0-9]/.test(prevChar)) score += 12; else score -= 25;
+            if (/[^a-z0-9]/.test(nextChar)) score += 12; else score -= 25;
+            // Common tome layout: " - 01 - " or " . 02 . "
+            if (/(?:^|[\s\[(])[-–—]\s*$/.test(beforeWindow)) score += 16;
+            if (/^\s*[-–—]/.test(afterWindow)) score += 12;
+            if (/\(\s*$/.test(beforeWindow) || /\[\s*$/.test(beforeWindow)) score += 8;
+            // Avoid technical tags like U3840, 1920px, etc.
+            if (/[a-z]\s*$/.test(beforeWindow) && !/\b(?:t|v|hs)\s*$/.test(beforeWindow)) score -= 10;
+
+            if (!best || score > best.score || (score === best.score && startIdx < best.startIdx)) {
+                best = { num, score, startIdx };
+            }
+        }
+
+        // Require a minimum confidence to avoid false positives.
+        if (best && best.score >= 28) {
+            return formatTome('T', best.num);
+        }
+
+        return { display: '', sortValue: Infinity };
     }
 
     function shorten(s) { return s.length>48 ? s.slice(0,42)+'…'+s.slice(-6) : s; }
