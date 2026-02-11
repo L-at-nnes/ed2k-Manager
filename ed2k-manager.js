@@ -15,6 +15,9 @@
 (function () {
     'use strict';
 
+    // Only run in the top-level window, not in iframes (avoids duplicate buttons in forum editors)
+    if (window.self !== window.top) return;
+
     // === Configuration ===
     const STORAGE_KEY = 'ed2k_revealer_prefs_v1';
 
@@ -92,6 +95,8 @@
 
         // 1) anchors with ed2k hrefs (including percent-encoded pipes)
         document.querySelectorAll('a[href]').forEach(a => {
+            // Exclude our own UI elements
+            if (a.closest('.ed2k-rev-btn') || a.closest('.ed2k-rev-modal')) return;
             const href = a.getAttribute('href') || '';
             if (href.toLowerCase().indexOf(ED2K_PREFIX) !== 0) return;
             addCandidate(href);
@@ -106,7 +111,11 @@
                     const parent = node.parentElement;
                     if (!parent) return NodeFilter.FILTER_REJECT;
                     const tag = parent.tagName ? parent.tagName.toLowerCase() : '';
-                    if (tag === 'script' || tag === 'style' || tag === 'textarea' || tag === 'noscript') {
+                    if (tag === 'script' || tag === 'style' || tag === 'textarea' || tag === 'noscript' || tag === 'input') {
+                        return NodeFilter.FILTER_REJECT;
+                    }
+                    // Exclude our own UI elements (button, modal, badge)
+                    if (parent.closest('.ed2k-rev-btn') || parent.closest('.ed2k-rev-modal')) {
                         return NodeFilter.FILTER_REJECT;
                     }
                     return NodeFilter.FILTER_ACCEPT;
