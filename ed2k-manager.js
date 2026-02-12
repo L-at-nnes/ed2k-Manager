@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ed2k Manager
 // @namespace    Userscript
-// @version      1.2.0
+// @version      1.2.1
 // @description  Reveal ed2k links on any page with robust ed2k decoding and advanced tome/integrale extraction.
 // @author       L@nnes
 // @match        *://*/*
@@ -68,8 +68,13 @@
     function buildItemFromLink(rawLink) {
         const cleaned = stripTrailingPunctuation(rawLink);
         if (!cleaned || cleaned.toLowerCase().indexOf(ED2K_PREFIX) !== 0) return null;
-        const decoded = ensureTrailingSlash(decodeEd2kLink(cleaned));
-        const normalizedLink = decoded.replace(/^ed2k:\/\//i, ED2K_PREFIX);
+        // Only decode pipe characters (%7C) for regex matching; keep the rest of
+        // the URL-encoding intact so ed2k clients can parse the link correctly
+        // (fully decoding introduced raw apostrophes/spaces that broke HTML
+        // attributes and made links unparseable by eMule).
+        const pipeDecoded = cleaned.replace(/%7C/gi, '|');
+        const withSlash = ensureTrailingSlash(pipeDecoded);
+        const normalizedLink = withSlash.replace(/^ed2k:\/\//i, ED2K_PREFIX);
         const match = normalizedLink.match(ED2K_BASE_REGEX);
         if (!match) return null;
         const name = decodeFileName(match[1]);
@@ -409,7 +414,7 @@
                 const _bytes_val = parseInt(it.size || 0, 10) || 0;
                 const _mb_display = _bytes_val ? ( (_bytes_val / (1024*1024)).toFixed(2) + ' MB') : '';
                 sizeTd.innerHTML = `<div style='font-weight:600;color:#cfe8f6' title='${_bytes_val} bytes'>${_mb_display}</div>`;
-                const linkTd = document.createElement('td'); linkTd.innerHTML = `<a class='ed2k-link' href='${it.link}' target='_blank' rel='noopener noreferrer'>${shorten(it.link)}</a>`;
+                const linkTd = document.createElement('td'); linkTd.innerHTML = `<a class="ed2k-link" href="${escapeHtml(it.link)}" target="_blank" rel="noopener noreferrer">${escapeHtml(shorten(it.link))}</a>`;
                 tr.appendChild(cbTd); tr.appendChild(tomeTd); tr.appendChild(nameTd); tr.appendChild(sizeTd); tr.appendChild(linkTd);
                 frag.appendChild(tr);
             });

@@ -2,7 +2,7 @@
 
 > Need the French version? Read [README_FR.md](README_FR.md) for the complete translation.
 
-[![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)](https://github.com/L-at-nnes/ed2k-Manager)
+[![Version](https://img.shields.io/badge/version-1.2.1-blue.svg)](https://github.com/L-at-nnes/ed2k-Manager)
 [![Auto-update](https://img.shields.io/badge/auto--update-enabled-brightgreen.svg)](https://github.com/L-at-nnes/ed2k-Manager/blob/main/ed2k-manager.js)
 
 ## Overview
