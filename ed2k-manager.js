@@ -1,9 +1,10 @@
 // ==UserScript==
 // @name         ed2k Manager
 // @namespace    Userscript
-// @version      1.2.1
-// @description  Reveal ed2k links on any page with robust ed2k decoding and advanced tome/integrale extraction.
+// @version      1.3.0
+// @description  Reveal ed2k links on any page with robust decoding, advanced tome extraction, and external hash comparison.
 // @author       L@nnes
+// @icon         https://ebdz.net/favicon-32x32.png
 // @match        *://*/*
 // @grant        GM_setClipboard
 // @grant        GM_addStyle
@@ -32,6 +33,7 @@
     const ED2K_PREFIX = 'ed2k://';
     const ED2K_BASE_REGEX = /^ed2k:\/\/\|file\|([^|]+)\|([0-9]+)\|([a-fA-F0-9]{32})\|/i;
     const ED2K_CANDIDATE_REGEX = /ed2k:\/\/[^\s<>"']+/gi;
+    const ED2K_HASH_REGEX = /\b[a-fA-F0-9]{32}\b/g;
 
     function decodeFileName(raw) {
         try {
@@ -63,6 +65,22 @@
     function ensureTrailingSlash(link) {
         if (!link) return link;
         return link.endsWith('/') ? link : `${link}/`;
+    }
+
+    function extractEd2kHashesFromContent(rawContent) {
+        const content = String(rawContent || '');
+        const matches = content.match(ED2K_HASH_REGEX);
+        if (!matches) return new Set();
+        return new Set(matches.map(h => h.toLowerCase()));
+    }
+
+    function readFileAsText(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ''));
+            reader.onerror = () => reject(reader.error || new Error('Unable to read file'));
+            reader.readAsText(file);
+        });
     }
 
     function buildItemFromLink(rawLink) {
@@ -154,6 +172,7 @@
     .ed2k-rev-search{padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.02);color:#cfe8f6;min-width:260px}
     .ed2k-size-input{padding:6px 8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.02);color:#cfe8f6;width:110px}
     .ed2k-size-row{display:flex;gap:6px;align-items:center}
+    .ed2k-hash-status{font-size:11px;color:#bfefff;opacity:0.9;padding:4px 8px;border:1px solid rgba(255,255,255,0.05);border-radius:999px;background:rgba(255,255,255,0.03)}
     .ed2k-btn{min-width:88px;text-align:center}
     .ed2k-rev-list{overflow:auto;padding:8px;flex:1;background:transparent}
     table.ed2k-table{width:100%;border-collapse:collapse;font-size:13px;color:#cfe8f6}
@@ -175,6 +194,7 @@
     table.ed2k-table th{color:#b6e6f4}
     .ed2k-btn{background:rgba(255,255,255,0.03);color:#e6fbff;border:1px solid rgba(255,255,255,0.04)}
     .ed2k-btn.primary{background:linear-gradient(90deg,#2ad0e6,#60a5fa);color:#012}
+    .ed2k-btn:disabled{opacity:0.45;cursor:not-allowed}
     .ed2k-rev-search{background:rgba(255,255,255,0.02);color:#e6fbff;border:1px solid rgba(255,255,255,0.04)}
      /* Credit / footer link: red by default, violet on hover. Use !important to avoid page CSS overrides.
          SVG fill is forced too so the icon follows the color. */
@@ -246,6 +266,18 @@
     const copyAllBtn = document.createElement('button'); copyAllBtn.className = 'ed2k-btn'; copyAllBtn.textContent = 'Copier tout';
     const exportBtn = document.createElement('button'); exportBtn.className = 'ed2k-btn'; exportBtn.textContent = 'Exporter CSV';
     const exportCollectionBtn = document.createElement('button'); exportCollectionBtn.className = 'ed2k-btn'; exportCollectionBtn.textContent = 'Exporter .emulecollection';
+    const importHashesBtn = document.createElement('button'); importHashesBtn.className = 'ed2k-btn'; importHashesBtn.textContent = 'Importer hash';
+    const selectNewBtn = document.createElement('button'); selectNewBtn.className = 'ed2k-btn'; selectNewBtn.textContent = 'Sélectionner nouveaux';
+    const clearCompareBtn = document.createElement('button'); clearCompareBtn.className = 'ed2k-btn'; clearCompareBtn.textContent = 'Effacer comparaison';
+    const importHashesInput = document.createElement('input');
+    importHashesInput.type = 'file';
+    importHashesInput.accept = '.txt,.csv,.json,.ndjson,.log,text/plain,text/csv,application/json';
+    importHashesInput.style.display = 'none';
+    const hashStatus = document.createElement('div'); hashStatus.className = 'ed2k-hash-status'; hashStatus.textContent = 'Comparaison: inactive';
+
+    let externalHashSet = null;
+    let externalHashSource = '';
+    const itemByLink = new Map(items.map(it => [it.link, it]));
 
     // size filters UI
     const sizeRow = document.createElement('div'); sizeRow.className = 'ed2k-size-row';
@@ -257,7 +289,12 @@
     toolbar.appendChild(search);
     // put size filters next to search
     toolbar.appendChild(sizeRow);
+    toolbar.appendChild(importHashesBtn);
+    toolbar.appendChild(selectNewBtn);
+    toolbar.appendChild(clearCompareBtn);
+    toolbar.appendChild(hashStatus);
     toolbar.appendChild(selectAllBtn); toolbar.appendChild(deselectAllBtn); toolbar.appendChild(copyBtn); toolbar.appendChild(copyAllBtn); toolbar.appendChild(exportBtn); toolbar.appendChild(exportCollectionBtn);
+    toolbar.appendChild(importHashesInput);
         header.appendChild(toolbar);
 
         const list = document.createElement('div'); list.className = 'ed2k-rev-list';
@@ -276,6 +313,25 @@
 
         function getSelectedItems() {
             return items.filter(it => selectedLinks.has(it.link));
+        }
+
+        function hasImportedHash(item) {
+            return !!(externalHashSet && externalHashSet.has(item.hash));
+        }
+
+        function updateHashStatus() {
+            if (!externalHashSet) {
+                hashStatus.textContent = 'Comparaison: inactive';
+                selectNewBtn.disabled = true;
+                clearCompareBtn.disabled = true;
+                return;
+            }
+            const knownCount = items.reduce((acc, it) => acc + (hasImportedHash(it) ? 1 : 0), 0);
+            const newCount = Math.max(0, items.length - knownCount);
+            const source = externalHashSource ? ` (${externalHashSource})` : '';
+            hashStatus.textContent = `Comparaison: ${knownCount} connus, ${newCount} nouveaux${source}`;
+            selectNewBtn.disabled = false;
+            clearCompareBtn.disabled = false;
         }
 
         function setCheckedAndTrack(cb, checked) {
@@ -395,8 +451,12 @@
                 const nameTd = document.createElement('td');
                 const nameDiv = document.createElement('div');
                 nameDiv.className = 'ed2k-row-name';
-                nameDiv.textContent = it.name;
+                const nameSuffix = externalHashSet ? (hasImportedHash(it) ? ' [déjà possédé]' : ' [nouveau]') : '';
+                nameDiv.textContent = `${it.name}${nameSuffix}`;
                 nameDiv.style.cursor = 'pointer';
+                if (externalHashSet && hasImportedHash(it)) {
+                    nameDiv.style.opacity = '0.72';
+                }
                 nameDiv.title = 'Cliquer pour copier le lien';
                 nameDiv.addEventListener('click', async (evt) => {
                     cb.checked = !cb.checked;
@@ -420,6 +480,7 @@
             });
             tbody.appendChild(frag);
             updateMasterCheckbox();
+            updateHashStatus();
         }
 
         table.appendChild(thead); table.appendChild(tbody);
@@ -487,6 +548,47 @@
         deselectAllBtn.addEventListener('click', () => {
             selectedLinks.clear();
             setAllVisible(false);
+        });
+
+        importHashesBtn.addEventListener('click', () => importHashesInput.click());
+
+        importHashesInput.addEventListener('change', async () => {
+            try {
+                const file = importHashesInput.files && importHashesInput.files[0];
+                importHashesInput.value = '';
+                if (!file) return;
+                const rawContent = await readFileAsText(file);
+                externalHashSet = extractEd2kHashesFromContent(rawContent);
+                externalHashSource = file.name;
+                selectedLinks.clear();
+                renderRows(search.value);
+                const importedCount = externalHashSet.size;
+                flashButton(importHashesBtn, importedCount ? `${importedCount} hash` : '0 hash');
+            } catch (e) {
+                flashButton(importHashesBtn, 'Erreur');
+            }
+        });
+
+        clearCompareBtn.addEventListener('click', () => {
+            externalHashSet = null;
+            externalHashSource = '';
+            renderRows(search.value);
+            flashButton(clearCompareBtn, 'Effacé');
+        });
+
+        selectNewBtn.addEventListener('click', () => {
+            if (!externalHashSet) {
+                flashButton(selectNewBtn, 'Import requis');
+                return;
+            }
+            selectedLinks.clear();
+            getVisibleCheckboxes().forEach(cb => {
+                const item = itemByLink.get(cb.dataset.link || '');
+                const shouldSelect = !!(item && !hasImportedHash(item));
+                setCheckedAndTrack(cb, shouldSelect);
+            });
+            updateMasterCheckbox();
+            flashButton(selectNewBtn, 'Nouveaux cochés');
         });
 
         copyBtn.addEventListener('click', async () => {
@@ -725,6 +827,7 @@
         document.addEventListener('keydown', onEsc);
 
         // initial render
+        updateHashStatus();
         renderRows('');
 
         // clean up when modal is removed by other means

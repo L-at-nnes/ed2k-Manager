@@ -2,11 +2,11 @@
 
 > Need the English version? Read [README.md](README.md) for the complete translation.
 
-[![Version](https://img.shields.io/badge/version-1.2.1-blue.svg)](https://github.com/L-at-nnes/ed2k-Manager)
+[![Version](https://img.shields.io/badge/version-1.3.0-blue.svg)](https://github.com/L-at-nnes/ed2k-Manager)
 [![Mise a jour auto](https://img.shields.io/badge/mise--a--jour-automatique-brightgreen.svg)](https://github.com/L-at-nnes/ed2k-Manager/blob/main/ed2k-manager.js)
 
 ## Apercu
-ed2k Manager est un userscript leger pour Tampermonkey ou Violentmonkey. Il inspecte chaque page web, detecte automatiquement les liens `ed2k://` (y compris les liens percent-encodes comme `ed2k://%7Cfile%7C...`) et les affiche dans un panneau flottant. L'extraction des tomes est maintenant bien plus solide : elle reconnait les marqueurs explicites (`T01`, `Tome 39`, `HS2`), les formats implicites (`- 01 -`, `.02.`, `02 (sur 3)`), ainsi que les editions speciales comme les integrales et certains packs. Vous pouvez ensuite rechercher, filtrer par taille, selectionner des fichiers, copier les liens ou exporter les resultats pour une utilisation ulterieure. Tout fonctionne dans le navigateur et toutes les preferences sont stockees en local.
+ed2k Manager est un userscript leger pour Tampermonkey ou Violentmonkey. Il inspecte chaque page web, detecte automatiquement les liens `ed2k://` (y compris les liens percent-encodes comme `ed2k://%7Cfile%7C...`) et les affiche dans un panneau flottant. L'extraction des tomes est maintenant bien plus solide : elle reconnait les marqueurs explicites (`T01`, `Tome 39`, `HS2`), les formats implicites (`- 01 -`, `.02.`, `02 (sur 3)`), ainsi que les editions speciales comme les integrales et certains packs. Le script peut aussi comparer les hash de la page avec un fichier externe (CSV/JSON/TXT) pour cocher rapidement uniquement les liens vraiment nouveaux. Vous pouvez ensuite rechercher, filtrer par taille, selectionner des fichiers, copier les liens ou exporter les resultats pour une utilisation ulterieure. Tout fonctionne dans le navigateur et toutes les preferences sont stockees en local.
 
 ## Fonctionnalites principales
 - Detection robuste des liens ed2k de la page, y compris les liens percent-encodes, avec badge affichant le nombre de correspondances.
@@ -14,6 +14,7 @@ ed2k Manager est un userscript leger pour Tampermonkey ou Violentmonkey. Il insp
 - L'extraction gere les marqueurs explicites, les numerotations implicites, et des editions speciales comme les integrales (`INT`) et certains packs (`PACK`).
 - Clic sur le nom d'un fichier pour cocher/decocher la ligne et copier immediatement son lien.
 - Fenetre modale claire avec selection multiple, selection par plage (**Shift+clic**), recherche regex et filtres Min/Max acceptant des valeurs lisibles (`10MB`, `2GB`, etc.).
+- Import de listes de hash depuis un fichier externe (`.csv`, `.json`, `.txt`, etc.) pour comparer avec la page, afficher le nombre de hash connus/nouveaux et cocher les nouveaux en un clic.
 - Compteur de selection en direct dans l'entete pour voir immediatement combien de liens sont coches.
 - Boutons de copie pour la selection ou pour la liste complete, ainsi qu'un export CSV (`name,size,link`) et `.emulecollection` (les exports utilisent la selection si elle existe, sinon toute la liste).
 - Decodage automatique des noms de fichiers plus affichage lisible des tailles (les octets exacts sont indiques dans le tooltip).
@@ -46,9 +47,11 @@ Tampermonkey verifie automatiquement les nouvelles versions sur GitHub. Aucune r
 1. Ouvrez une page contenant des liens ed2k puis cliquez sur le bouton flottant "ed2k".
 2. Parcourez la liste des liens detectes dans la fenetre modale. Le badge indique le nombre total, l'entete affiche combien sont selectionnes, et la colonne Tome sert de tri par defaut.
 3. Tapez un mot ou une regex (ex : `/S01E02/i`) dans la barre de recherche. Utilisez les champs **Min/Max** pour filtrer par taille.
-4. Cochez des lignes individuellement, utilisez **Shift+clic** pour une selection par plage, ou utilisez **Tout selectionner**. Vous pouvez aussi cliquer directement sur un nom de fichier pour cocher/decocher et copier ce lien.
-5. Cliquez sur **Copier la selection**, **Tout copier**, **Exporter CSV** (pour `ed2k-links.csv`) ou **Exporter .emulecollection**. Les deux exports utilisent la selection si elle existe, sinon toute la liste.
-6. Fermez la fenetre avec **Fermer**, la touche **Esc** ou en recliquant sur le bouton.
+4. Si vous avez un inventaire de hash deja possedes, cliquez sur **Importer hash** puis chargez votre fichier (`.csv`, `.json`, `.txt`, etc.). Le panneau affiche le nombre de hash connus/nouveaux et marque chaque ligne.
+5. Cliquez sur **Selectionner nouveaux** pour cocher uniquement les liens dont le hash n'est pas present dans le fichier importe.
+6. Cochez des lignes individuellement, utilisez **Shift+clic** pour une selection par plage, ou utilisez **Tout selectionner**. Vous pouvez aussi cliquer directement sur un nom de fichier pour cocher/decocher et copier ce lien.
+7. Cliquez sur **Copier la selection**, **Tout copier**, **Exporter CSV** (pour `ed2k-links.csv`) ou **Exporter .emulecollection**. Les deux exports utilisent la selection si elle existe, sinon toute la liste.
+8. Fermez la fenetre avec **Fermer**, la touche **Esc** ou en recliquant sur le bouton.
 
 ## Mises a jour automatiques
 Le script est distribue via GitHub. Tampermonkey compare regulierement votre copie locale a la version officielle et l'actualise automatiquement. Tant que l'userscript est actif, vous recevez les correctifs et ameliorations sans intervention manuelle.
@@ -56,6 +59,7 @@ Le script est distribue via GitHub. Tampermonkey compare regulierement votre cop
 ## Depannage
 - **Le bouton n'apparait pas :** assurez-vous que le script est active dans Tampermonkey puis rechargez la page (un Ctrl+F5 peut aider).
 - **La copie vers le presse papier echoue :** rafraichissez l'onglet ; certains navigateurs bloquent l'acces presse papier avant la premiere interaction.
+- **Le fichier importe affiche `0 hash` :** verifiez qu'il contient bien des hash ED2K (32 caracteres hexadecimaux). Le parseur extrait automatiquement tous les hash detectables dans le contenu brut.
 - **L'interface rame avec beaucoup de liens :** consultez la section TODO-LIST a la fin de ce README pour les ameliorations prevues.
 
 ## Feuille de route et communaute
