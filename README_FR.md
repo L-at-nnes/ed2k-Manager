@@ -2,7 +2,7 @@
 
 > Need the English version? Read [README.md](README.md) for the complete translation.
 
-[![Version](https://img.shields.io/badge/version-1.3.0-blue.svg)](https://github.com/L-at-nnes/ed2k-Manager)
+[![Version](https://img.shields.io/badge/version-1.4.1-blue.svg)](https://github.com/L-at-nnes/ed2k-Manager)
 [![Mise a jour auto](https://img.shields.io/badge/mise--a--jour-automatique-brightgreen.svg)](https://github.com/L-at-nnes/ed2k-Manager/blob/main/ed2k-manager.js)
 
 ## Apercu
@@ -15,6 +15,9 @@ ed2k Manager est un userscript leger pour Tampermonkey ou Violentmonkey. Il insp
 - Clic sur le nom d'un fichier pour cocher/decocher la ligne et copier immediatement son lien.
 - Fenetre modale claire avec selection multiple, selection par plage (**Shift+clic**), recherche regex et filtres Min/Max acceptant des valeurs lisibles (`10MB`, `2GB`, etc.).
 - Import de listes de hash depuis un fichier externe (`.csv`, `.json`, `.txt`, etc.) pour comparer avec la page, afficher le nombre de hash connus/nouveaux et cocher les nouveaux en un clic.
+- Switch de mémoire pour les hash importés : mode `session` (par défaut) pour conserver tant que le navigateur reste ouvert, ou mode `persistante` pour conserver après redémarrage.
+- Import de gros fichiers optimisé avec parsing en arrière-plan pour charger plus facilement des listes de 10k hash et plus.
+- Barre d'actions simplifiée et plus claire : menu `Selectionner` pour les actions de selection, boutons directs `Copier` + `Tout copier`, et menu `Exporter` pour CSV et `.emulecollection`.
 - Compteur de selection en direct dans l'entete pour voir immediatement combien de liens sont coches.
 - Boutons de copie pour la selection ou pour la liste complete, ainsi qu'un export CSV (`name,size,link`) et `.emulecollection` (les exports utilisent la selection si elle existe, sinon toute la liste).
 - Decodage automatique des noms de fichiers plus affichage lisible des tailles (les octets exacts sont indiques dans le tooltip).
@@ -47,11 +50,14 @@ Tampermonkey verifie automatiquement les nouvelles versions sur GitHub. Aucune r
 1. Ouvrez une page contenant des liens ed2k puis cliquez sur le bouton flottant "ed2k".
 2. Parcourez la liste des liens detectes dans la fenetre modale. Le badge indique le nombre total, l'entete affiche combien sont selectionnes, et la colonne Tome sert de tri par defaut.
 3. Tapez un mot ou une regex (ex : `/S01E02/i`) dans la barre de recherche. Utilisez les champs **Min/Max** pour filtrer par taille.
-4. Si vous avez un inventaire de hash deja possedes, cliquez sur **Importer hash** puis chargez votre fichier (`.csv`, `.json`, `.txt`, etc.). Le panneau affiche le nombre de hash connus/nouveaux et marque chaque ligne.
-5. Cliquez sur **Selectionner nouveaux** pour cocher uniquement les liens dont le hash n'est pas present dans le fichier importe.
-6. Cochez des lignes individuellement, utilisez **Shift+clic** pour une selection par plage, ou utilisez **Tout selectionner**. Vous pouvez aussi cliquer directement sur un nom de fichier pour cocher/decocher et copier ce lien.
-7. Cliquez sur **Copier la selection**, **Tout copier**, **Exporter CSV** (pour `ed2k-links.csv`) ou **Exporter .emulecollection**. Les deux exports utilisent la selection si elle existe, sinon toute la liste.
-8. Fermez la fenetre avec **Fermer**, la touche **Esc** ou en recliquant sur le bouton.
+4. Utilisez **Selectionner** (menu deroulant) pour les actions de masse (tout selectionner / tout deselectionner).
+5. Choisissez le mode **Memoire: session/persistante** selon votre besoin (temporaire pendant la session navigateur ou conserve apres redemarrage).
+6. Si vous avez un inventaire de hash deja possedes, cliquez sur **Charger hash** puis chargez votre fichier (`.csv`, `.json`, `.txt`, etc.). Le panneau affiche le nombre de hash connus/nouveaux et marque chaque ligne.
+7. Cliquez sur **Nouveaux** pour cocher uniquement les liens dont le hash n'est pas present dans le fichier importe.
+8. Cochez des lignes individuellement, utilisez **Shift+clic** pour une selection par plage, ou cliquez directement sur un nom de fichier pour cocher/decocher et copier ce lien.
+9. Utilisez **Copier** pour la selection courante et **Tout copier** pour copier toute la liste.
+10. Ouvrez **Exporter** (menu deroulant) pour exporter en CSV (`ed2k-links.csv`) ou en `.emulecollection` (selection si presente, sinon toute la liste).
+11. Fermez la fenetre avec **Fermer**, la touche **Esc** ou en recliquant sur le bouton.
 
 ## Mises a jour automatiques
 Le script est distribue via GitHub. Tampermonkey compare regulierement votre copie locale a la version officielle et l'actualise automatiquement. Tant que l'userscript est actif, vous recevez les correctifs et ameliorations sans intervention manuelle.

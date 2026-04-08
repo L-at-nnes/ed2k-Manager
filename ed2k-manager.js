@@ -1,13 +1,16 @@
 // ==UserScript==
 // @name         ed2k Manager
 // @namespace    Userscript
-// @version      1.3.0
+// @version      1.4.1
 // @description  Reveal ed2k links on any page with robust decoding, advanced tome extraction, and external hash comparison.
 // @author       L@nnes
 // @icon         https://ebdz.net/favicon-32x32.png
 // @match        *://*/*
 // @grant        GM_setClipboard
 // @grant        GM_addStyle
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_deleteValue
 // @run-at       document-idle
 // @updateURL    https://raw.githubusercontent.com/L-at-nnes/ed2k-Manager/main/ed2k-manager.js
 // @downloadURL  https://raw.githubusercontent.com/L-at-nnes/ed2k-Manager/main/ed2k-manager.js
@@ -21,10 +24,81 @@
 
     // === Configuration ===
     const STORAGE_KEY = 'ed2k_revealer_prefs_v1';
+    const HASH_MEMORY_MODE_KEY = 'ed2k_hash_memory_mode_v1';
+    const HASH_SESSION_DATA_KEY = 'ed2k_hash_session_data_v1';
+    const HASH_SESSION_SOURCE_KEY = 'ed2k_hash_session_source_v1';
+    const HASH_PERSIST_DATA_KEY = 'ed2k_hash_persist_data_v1';
+    const HASH_PERSIST_SOURCE_KEY = 'ed2k_hash_persist_source_v1';
 
     // === Utilities ===
     function savePrefs(p) { localStorage.setItem(STORAGE_KEY, JSON.stringify(p)); }
     function loadPrefs() { try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch (e) { return {}; } }
+
+    function loadHashMemoryMode() {
+        try {
+            const mode = String(localStorage.getItem(HASH_MEMORY_MODE_KEY) || 'session').toLowerCase();
+            return mode === 'persistent' ? 'persistent' : 'session';
+        } catch (e) {
+            return 'session';
+        }
+    }
+
+    function saveHashMemoryMode(mode) {
+        try {
+            localStorage.setItem(HASH_MEMORY_MODE_KEY, mode === 'persistent' ? 'persistent' : 'session');
+        } catch (e) {}
+    }
+
+    function safeSessionGet(key) {
+        try { return String(sessionStorage.getItem(key) || ''); } catch (e) { return ''; }
+    }
+
+    function safeSessionSet(key, value) {
+        try { sessionStorage.setItem(key, String(value || '')); } catch (e) {}
+    }
+
+    function safeSessionDelete(key) {
+        try { sessionStorage.removeItem(key); } catch (e) {}
+    }
+
+    async function gmGetValueSafe(key, fallbackValue) {
+        try {
+            if (typeof GM_getValue === 'function') return await GM_getValue(key, fallbackValue);
+        } catch (e) {}
+        try {
+            const fallbackKey = `ed2k_gm_fallback_${key}`;
+            const val = localStorage.getItem(fallbackKey);
+            return val === null ? fallbackValue : val;
+        } catch (e) {
+            return fallbackValue;
+        }
+    }
+
+    async function gmSetValueSafe(key, value) {
+        try {
+            if (typeof GM_setValue === 'function') {
+                await GM_setValue(key, value);
+                return;
+            }
+        } catch (e) {}
+        try {
+            const fallbackKey = `ed2k_gm_fallback_${key}`;
+            localStorage.setItem(fallbackKey, String(value || ''));
+        } catch (e) {}
+    }
+
+    async function gmDeleteValueSafe(key) {
+        try {
+            if (typeof GM_deleteValue === 'function') {
+                await GM_deleteValue(key);
+                return;
+            }
+        } catch (e) {}
+        try {
+            const fallbackKey = `ed2k_gm_fallback_${key}`;
+            localStorage.removeItem(fallbackKey);
+        } catch (e) {}
+    }
 
     // keep only button visibility in prefs; theme fixed to ocean
     const prefs = Object.assign({ showButton: true, btnPos: 'bottom-right' }, loadPrefs());
@@ -74,12 +148,122 @@
         return new Set(matches.map(h => h.toLowerCase()));
     }
 
+    function serializeHashSet(hashSet) {
+        if (!hashSet || !hashSet.size) return '';
+        return Array.from(hashSet).join('\n');
+    }
+
+    function deserializeHashSet(serialized) {
+        return extractEd2kHashesFromContent(String(serialized || ''));
+    }
+
+    async function loadStoredHashPayload(mode) {
+        if (mode === 'persistent') {
+            const storedData = await gmGetValueSafe(HASH_PERSIST_DATA_KEY, '');
+            const storedSource = await gmGetValueSafe(HASH_PERSIST_SOURCE_KEY, '');
+            return {
+                hashes: deserializeHashSet(storedData),
+                source: String(storedSource || ''),
+            };
+        }
+        return {
+            hashes: deserializeHashSet(safeSessionGet(HASH_SESSION_DATA_KEY)),
+            source: safeSessionGet(HASH_SESSION_SOURCE_KEY),
+        };
+    }
+
+    async function saveStoredHashPayload(mode, hashSet, sourceName) {
+        const serialized = serializeHashSet(hashSet);
+        const src = String(sourceName || '');
+        if (mode === 'persistent') {
+            await gmSetValueSafe(HASH_PERSIST_DATA_KEY, serialized);
+            await gmSetValueSafe(HASH_PERSIST_SOURCE_KEY, src);
+            safeSessionDelete(HASH_SESSION_DATA_KEY);
+            safeSessionDelete(HASH_SESSION_SOURCE_KEY);
+            return;
+        }
+        safeSessionSet(HASH_SESSION_DATA_KEY, serialized);
+        safeSessionSet(HASH_SESSION_SOURCE_KEY, src);
+        await gmDeleteValueSafe(HASH_PERSIST_DATA_KEY);
+        await gmDeleteValueSafe(HASH_PERSIST_SOURCE_KEY);
+    }
+
+    async function clearStoredHashPayload(mode) {
+        if (mode === 'persistent') {
+            await gmDeleteValueSafe(HASH_PERSIST_DATA_KEY);
+            await gmDeleteValueSafe(HASH_PERSIST_SOURCE_KEY);
+            return;
+        }
+        safeSessionDelete(HASH_SESSION_DATA_KEY);
+        safeSessionDelete(HASH_SESSION_SOURCE_KEY);
+    }
+
     function readFileAsText(file) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = () => resolve(String(reader.result || ''));
             reader.onerror = () => reject(reader.error || new Error('Unable to read file'));
             reader.readAsText(file);
+        });
+    }
+
+    async function parseHashesWithWorker(rawContent) {
+        const content = String(rawContent || '');
+        if (!content) return new Set();
+        if (typeof Worker === 'undefined' || typeof Blob === 'undefined' || typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') {
+            return extractEd2kHashesFromContent(content);
+        }
+        return new Promise((resolve) => {
+            let settled = false;
+            let worker = null;
+            let workerUrl = null;
+            const finish = (setVal) => {
+                if (settled) return;
+                settled = true;
+                try { if (worker) worker.terminate(); } catch (e) {}
+                try { if (workerUrl) URL.revokeObjectURL(workerUrl); } catch (e) {}
+                resolve(setVal);
+            };
+
+            const workerCode = `
+                self.onmessage = function (ev) {
+                    try {
+                        var text = String((ev && ev.data) || '');
+                        var matches = text.match(/\\b[a-fA-F0-9]{32}\\b/g) || [];
+                        var seen = Object.create(null);
+                        var out = [];
+                        for (var i = 0; i < matches.length; i += 1) {
+                            var hash = String(matches[i] || '').toLowerCase();
+                            if (!seen[hash]) {
+                                seen[hash] = 1;
+                                out.push(hash);
+                            }
+                        }
+                        self.postMessage({ ok: true, hashes: out });
+                    } catch (err) {
+                        self.postMessage({ ok: false, hashes: [] });
+                    }
+                };
+            `;
+
+            try {
+                const blob = new Blob([workerCode], { type: 'application/javascript' });
+                workerUrl = URL.createObjectURL(blob);
+                worker = new Worker(workerUrl);
+                worker.onmessage = (ev) => {
+                    const payload = ev && ev.data;
+                    if (!payload || payload.ok !== true || !Array.isArray(payload.hashes)) {
+                        finish(extractEd2kHashesFromContent(content));
+                        return;
+                    }
+                    finish(new Set(payload.hashes.map(h => String(h || '').toLowerCase())));
+                };
+                worker.onerror = () => finish(extractEd2kHashesFromContent(content));
+                worker.postMessage(content);
+                setTimeout(() => finish(extractEd2kHashesFromContent(content)), 3000);
+            } catch (e) {
+                finish(extractEd2kHashesFromContent(content));
+            }
         });
     }
 
@@ -165,7 +349,7 @@
     .ed2k-logo{font-weight:800;color:#022;letter-spacing:0.6px;font-family:Inter,Segoe UI,Roboto,Arial;font-size:16px;background:linear-gradient(90deg,#e6fbff,#7dd3fc);-webkit-background-clip:text;background-clip:text;color:transparent;text-transform:lowercase}
     .ed2k-rev-btn .ed2k-logo-wrap{display:flex;align-items:center;justify-content:center;width:100%;height:100%;border-radius:50%;background:radial-gradient(circle at 30% 30%, rgba(255,255,255,0.12), transparent 40%);}
     .ed2k-rev-modal{position:fixed;right:24px;bottom:88px;z-index:9999998;width:880px;max-width:calc(100% - 48px);max-height:80vh;background:#07101a;border-radius:12px;padding:14px;box-shadow:0 20px 60px rgba(2,6,23,0.8);overflow:hidden;display:flex;flex-direction:column;color:#e6eef8;font-family:system-ui,Segoe UI,Roboto,Arial}
-    .ed2k-rev-header{display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.04);} 
+    .ed2k-rev-header{display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.04);flex-wrap:wrap} 
     .ed2k-rev-title{font-weight:700;color:#7dd3fc;font-size:14px}
     .ed2k-rev-selection{font-size:12px;color:#bfefff;opacity:0.95;padding:4px 8px;border:1px solid rgba(255,255,255,0.06);border-radius:999px;background:rgba(255,255,255,0.04)}
     .ed2k-rev-toolbar{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -173,6 +357,18 @@
     .ed2k-size-input{padding:6px 8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.02);color:#cfe8f6;width:110px}
     .ed2k-size-row{display:flex;gap:6px;align-items:center}
     .ed2k-hash-status{font-size:11px;color:#bfefff;opacity:0.9;padding:4px 8px;border:1px solid rgba(255,255,255,0.05);border-radius:999px;background:rgba(255,255,255,0.03)}
+    .ed2k-mode-wrap{display:flex;align-items:center;gap:6px;padding:4px 8px;border:1px solid rgba(255,255,255,0.06);border-radius:999px;background:rgba(255,255,255,0.03)}
+    .ed2k-mode-side{font-size:11px;color:#b8e8f6;opacity:0.65;transition:opacity .18s ease,color .18s ease}
+    .ed2k-mode-side.active{opacity:1;color:#e8fdff}
+    .ed2k-mode-switch{position:relative;width:48px;height:24px;border-radius:999px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.08);cursor:pointer;padding:0;display:inline-flex;align-items:center}
+    .ed2k-mode-switch::after{content:'';position:absolute;left:2px;top:2px;width:18px;height:18px;border-radius:50%;background:linear-gradient(180deg,#dff9ff,#8be7ff);box-shadow:0 2px 8px rgba(0,0,0,0.35);transition:transform .18s ease}
+    .ed2k-mode-switch.is-on{background:linear-gradient(90deg,#1dcde6,#5ca2f5)}
+    .ed2k-mode-switch.is-on::after{transform:translateX(24px)}
+    .ed2k-actions-wrap{position:relative;display:inline-flex}
+    .ed2k-actions-menu{position:absolute;top:calc(100% + 6px);left:0;right:auto;min-width:180px;padding:8px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:rgba(2,17,27,0.96);display:none;flex-direction:column;gap:6px;box-shadow:0 14px 32px rgba(2,6,23,0.5);z-index:30}
+    .ed2k-actions-wrap.ed2k-align-right .ed2k-actions-menu{left:auto;right:0}
+    .ed2k-actions-menu.open{display:flex}
+    .ed2k-menu-item{width:100%;text-align:left}
     .ed2k-btn{min-width:88px;text-align:center}
     .ed2k-rev-list{overflow:auto;padding:8px;flex:1;background:transparent}
     table.ed2k-table{width:100%;border-collapse:collapse;font-size:13px;color:#cfe8f6}
@@ -260,23 +456,49 @@
             const toolbar = document.createElement('div'); toolbar.className = 'ed2k-rev-toolbar';
             
     const search = document.createElement('input'); search.className = 'ed2k-rev-search'; search.placeholder = 'Filtrer par nom (ou /regex/flags) ...';
-    const selectAllBtn = document.createElement('button'); selectAllBtn.className = 'ed2k-btn'; selectAllBtn.textContent = 'Tout sélectionner';
-    const deselectAllBtn = document.createElement('button'); deselectAllBtn.className = 'ed2k-btn'; deselectAllBtn.textContent = 'Tout déselectionner';
-    const copyBtn = document.createElement('button'); copyBtn.className = 'ed2k-btn primary'; copyBtn.textContent = 'Copier sélection';
+    const selectAllBtn = document.createElement('button'); selectAllBtn.className = 'ed2k-btn ed2k-menu-item'; selectAllBtn.textContent = 'Tout sélectionner';
+    const deselectAllBtn = document.createElement('button'); deselectAllBtn.className = 'ed2k-btn ed2k-menu-item'; deselectAllBtn.textContent = 'Tout déselectionner';
+    const copyBtn = document.createElement('button'); copyBtn.className = 'ed2k-btn primary'; copyBtn.textContent = 'Copier';
     const copyAllBtn = document.createElement('button'); copyAllBtn.className = 'ed2k-btn'; copyAllBtn.textContent = 'Copier tout';
     const exportBtn = document.createElement('button'); exportBtn.className = 'ed2k-btn'; exportBtn.textContent = 'Exporter CSV';
     const exportCollectionBtn = document.createElement('button'); exportCollectionBtn.className = 'ed2k-btn'; exportCollectionBtn.textContent = 'Exporter .emulecollection';
-    const importHashesBtn = document.createElement('button'); importHashesBtn.className = 'ed2k-btn'; importHashesBtn.textContent = 'Importer hash';
-    const selectNewBtn = document.createElement('button'); selectNewBtn.className = 'ed2k-btn'; selectNewBtn.textContent = 'Sélectionner nouveaux';
+    const importHashesBtn = document.createElement('button'); importHashesBtn.className = 'ed2k-btn'; importHashesBtn.textContent = 'Charger hash';
+    const selectNewBtn = document.createElement('button'); selectNewBtn.className = 'ed2k-btn'; selectNewBtn.textContent = 'Nouveaux';
     const clearCompareBtn = document.createElement('button'); clearCompareBtn.className = 'ed2k-btn'; clearCompareBtn.textContent = 'Effacer comparaison';
+    const selectMenuBtn = document.createElement('button'); selectMenuBtn.className = 'ed2k-btn'; selectMenuBtn.textContent = 'Sélectionner ▾';
+    const selectMenuWrap = document.createElement('div'); selectMenuWrap.className = 'ed2k-actions-wrap';
+    const selectMenu = document.createElement('div'); selectMenu.className = 'ed2k-actions-menu';
+    const exportMenuBtn = document.createElement('button'); exportMenuBtn.className = 'ed2k-btn'; exportMenuBtn.textContent = 'Exporter ▾';
+    const exportMenuWrap = document.createElement('div'); exportMenuWrap.className = 'ed2k-actions-wrap ed2k-align-right';
+    const exportMenu = document.createElement('div'); exportMenu.className = 'ed2k-actions-menu';
+
+    const memoryModeWrap = document.createElement('div'); memoryModeWrap.className = 'ed2k-mode-wrap';
+    const memoryModeSession = document.createElement('span'); memoryModeSession.className = 'ed2k-mode-side'; memoryModeSession.textContent = 'Session';
+    const memoryModeSwitch = document.createElement('button'); memoryModeSwitch.className = 'ed2k-mode-switch'; memoryModeSwitch.type = 'button'; memoryModeSwitch.setAttribute('aria-label', 'Basculer le mode mémoire');
+    const memoryModePersistent = document.createElement('span'); memoryModePersistent.className = 'ed2k-mode-side'; memoryModePersistent.textContent = 'Persistante';
+    memoryModeWrap.appendChild(memoryModeSession); memoryModeWrap.appendChild(memoryModeSwitch); memoryModeWrap.appendChild(memoryModePersistent);
+
+    [selectAllBtn, deselectAllBtn, clearCompareBtn].forEach(btnItem => {
+        btnItem.classList.add('ed2k-menu-item');
+        selectMenu.appendChild(btnItem);
+    });
+    [exportBtn, exportCollectionBtn].forEach(btnItem => {
+        btnItem.classList.add('ed2k-menu-item');
+        exportMenu.appendChild(btnItem);
+    });
+    selectMenuWrap.appendChild(selectMenuBtn);
+    selectMenuWrap.appendChild(selectMenu);
+    exportMenuWrap.appendChild(exportMenuBtn);
+    exportMenuWrap.appendChild(exportMenu);
     const importHashesInput = document.createElement('input');
     importHashesInput.type = 'file';
     importHashesInput.accept = '.txt,.csv,.json,.ndjson,.log,text/plain,text/csv,application/json';
     importHashesInput.style.display = 'none';
-    const hashStatus = document.createElement('div'); hashStatus.className = 'ed2k-hash-status'; hashStatus.textContent = 'Comparaison: inactive';
+    const hashStatus = document.createElement('div'); hashStatus.className = 'ed2k-hash-status'; hashStatus.textContent = 'Comparaison inactive';
 
     let externalHashSet = null;
     let externalHashSource = '';
+        let memoryMode = loadHashMemoryMode();
     const itemByLink = new Map(items.map(it => [it.link, it]));
 
     // size filters UI
@@ -289,11 +511,14 @@
     toolbar.appendChild(search);
     // put size filters next to search
     toolbar.appendChild(sizeRow);
+    toolbar.appendChild(memoryModeWrap);
+    toolbar.appendChild(selectMenuWrap);
     toolbar.appendChild(importHashesBtn);
     toolbar.appendChild(selectNewBtn);
-    toolbar.appendChild(clearCompareBtn);
+    toolbar.appendChild(copyBtn);
+    toolbar.appendChild(copyAllBtn);
+    toolbar.appendChild(exportMenuWrap);
     toolbar.appendChild(hashStatus);
-    toolbar.appendChild(selectAllBtn); toolbar.appendChild(deselectAllBtn); toolbar.appendChild(copyBtn); toolbar.appendChild(copyAllBtn); toolbar.appendChild(exportBtn); toolbar.appendChild(exportCollectionBtn);
     toolbar.appendChild(importHashesInput);
         header.appendChild(toolbar);
 
@@ -319,9 +544,40 @@
             return !!(externalHashSet && externalHashSet.has(item.hash));
         }
 
+        function updateMemoryModeUi() {
+            const isPersistent = memoryMode === 'persistent';
+            memoryModeSwitch.classList.toggle('is-on', isPersistent);
+            memoryModeSwitch.title = isPersistent
+                ? 'Le fichier de hash reste après redémarrage du navigateur.'
+                : 'Le fichier de hash est gardé pendant la session navigateur.';
+            memoryModeSession.classList.toggle('active', !isPersistent);
+            memoryModePersistent.classList.toggle('active', isPersistent);
+        }
+
+        async function persistCurrentHashSet() {
+            if (!externalHashSet || !externalHashSet.size) {
+                await clearStoredHashPayload(memoryMode);
+                return;
+            }
+            await saveStoredHashPayload(memoryMode, externalHashSet, externalHashSource);
+        }
+
+        async function restoreImportedHashes() {
+            const payload = await loadStoredHashPayload(memoryMode);
+            if (!payload || !payload.hashes || !payload.hashes.size) {
+                externalHashSet = null;
+                externalHashSource = '';
+                updateHashStatus();
+                return;
+            }
+            externalHashSet = payload.hashes;
+            externalHashSource = String(payload.source || 'cache');
+            renderRows(search.value);
+        }
+
         function updateHashStatus() {
             if (!externalHashSet) {
-                hashStatus.textContent = 'Comparaison: inactive';
+                hashStatus.textContent = 'Comparaison inactive';
                 selectNewBtn.disabled = true;
                 clearCompareBtn.disabled = true;
                 return;
@@ -329,7 +585,7 @@
             const knownCount = items.reduce((acc, it) => acc + (hasImportedHash(it) ? 1 : 0), 0);
             const newCount = Math.max(0, items.length - knownCount);
             const source = externalHashSource ? ` (${externalHashSource})` : '';
-            hashStatus.textContent = `Comparaison: ${knownCount} connus, ${newCount} nouveaux${source}`;
+            hashStatus.textContent = `${knownCount} connus • ${newCount} nouveaux${source}`;
             selectNewBtn.disabled = false;
             clearCompareBtn.disabled = false;
         }
@@ -550,6 +806,55 @@
             setAllVisible(false);
         });
 
+        let selectMenuOpen = false;
+        let exportMenuOpen = false;
+        function setSelectMenuOpen(open) {
+            selectMenuOpen = !!open;
+            selectMenu.classList.toggle('open', selectMenuOpen);
+        }
+        function setExportMenuOpen(open) {
+            exportMenuOpen = !!open;
+            exportMenu.classList.toggle('open', exportMenuOpen);
+        }
+        function closeMenus() {
+            setSelectMenuOpen(false);
+            setExportMenuOpen(false);
+        }
+
+        selectMenuBtn.addEventListener('click', (evt) => {
+            evt.stopPropagation();
+            setExportMenuOpen(false);
+            setSelectMenuOpen(!selectMenuOpen);
+        });
+        exportMenuBtn.addEventListener('click', (evt) => {
+            evt.stopPropagation();
+            setSelectMenuOpen(false);
+            setExportMenuOpen(!exportMenuOpen);
+        });
+        selectMenu.addEventListener('click', () => setSelectMenuOpen(false));
+        exportMenu.addEventListener('click', () => setExportMenuOpen(false));
+        const onOutsideMenusClick = (evt) => {
+            if (!selectMenuWrap.contains(evt.target) && !exportMenuWrap.contains(evt.target)) closeMenus();
+        };
+        document.addEventListener('click', onOutsideMenusClick);
+
+        memoryModeSwitch.addEventListener('click', async () => {
+            try {
+                memoryMode = memoryMode === 'persistent' ? 'session' : 'persistent';
+                saveHashMemoryMode(memoryMode);
+                if (externalHashSet && externalHashSet.size) {
+                    await persistCurrentHashSet();
+                } else {
+                    await clearStoredHashPayload(memoryMode);
+                    await clearStoredHashPayload(memoryMode === 'persistent' ? 'session' : 'persistent');
+                }
+                updateMemoryModeUi();
+                renderRows(search.value);
+            } catch (e) {
+                flashButton(hashStatus, 'Erreur mémoire');
+            }
+        });
+
         importHashesBtn.addEventListener('click', () => importHashesInput.click());
 
         importHashesInput.addEventListener('change', async () => {
@@ -557,21 +862,28 @@
                 const file = importHashesInput.files && importHashesInput.files[0];
                 importHashesInput.value = '';
                 if (!file) return;
+                importHashesBtn.disabled = true;
+                importHashesBtn.textContent = 'Import...';
                 const rawContent = await readFileAsText(file);
-                externalHashSet = extractEd2kHashesFromContent(rawContent);
+                externalHashSet = await parseHashesWithWorker(rawContent);
                 externalHashSource = file.name;
+                await persistCurrentHashSet();
                 selectedLinks.clear();
                 renderRows(search.value);
                 const importedCount = externalHashSet.size;
-                flashButton(importHashesBtn, importedCount ? `${importedCount} hash` : '0 hash');
+                hashStatus.textContent = importedCount ? `${importedCount} hash importés` : '0 hash importé';
             } catch (e) {
-                flashButton(importHashesBtn, 'Erreur');
+                flashButton(hashStatus, 'Erreur import');
+            } finally {
+                importHashesBtn.disabled = false;
+                importHashesBtn.textContent = 'Charger hash';
             }
         });
 
-        clearCompareBtn.addEventListener('click', () => {
+        clearCompareBtn.addEventListener('click', async () => {
             externalHashSet = null;
             externalHashSource = '';
+            await clearStoredHashPayload(memoryMode);
             renderRows(search.value);
             flashButton(clearCompareBtn, 'Effacé');
         });
@@ -827,11 +1139,13 @@
         document.addEventListener('keydown', onEsc);
 
         // initial render
+        updateMemoryModeUi();
         updateHashStatus();
         renderRows('');
+        restoreImportedHashes();
 
         // clean up when modal is removed by other means
-        const obs = new MutationObserver(() => { if (!document.body.contains(modal)) { try{ document.removeEventListener('keydown', onEsc); obs.disconnect(); } catch(e){} } });
+        const obs = new MutationObserver(() => { if (!document.body.contains(modal)) { try{ document.removeEventListener('keydown', onEsc); document.removeEventListener('click', onOutsideMenusClick); obs.disconnect(); } catch(e){} } });
         obs.observe(document.body, { childList: true, subtree: true });
     }
 
