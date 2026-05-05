@@ -6,12 +6,12 @@
 [![Mise a jour auto](https://img.shields.io/badge/mise--a--jour-automatique-brightgreen.svg)](https://github.com/L-at-nnes/ed2k-Manager/blob/main/ed2k-manager.js)
 
 ## Apercu
-ed2k Manager est un userscript leger pour Tampermonkey ou Violentmonkey. Il inspecte chaque page web, detecte automatiquement les liens `ed2k://` (y compris les liens percent-encodes comme `ed2k://%7Cfile%7C...`) et les affiche dans un panneau flottant. L'extraction des tomes est maintenant bien plus solide : elle reconnait les marqueurs explicites (`T01`, `Tome 39`, `HS2`), les formats implicites (`- 01 -`, `.02.`, `02 (sur 3)`), ainsi que les editions speciales comme les integrales et certains packs. Vous pouvez ensuite rechercher, filtrer par taille, selectionner des fichiers, copier les liens ou exporter les resultats pour une utilisation ulterieure. Tout fonctionne dans le navigateur et toutes les preferences sont stockees en local.
+ed2k Manager est un userscript leger pour Tampermonkey ou Violentmonkey. Il inspecte chaque page web, detecte automatiquement les liens `ed2k://` (y compris les liens percent-encodes comme `ed2k://%7Cfile%7C...`) et les affiche dans un panneau flottant. L'extraction des tomes est maintenant bien plus solide : elle reconnait les marqueurs explicites (`T01`, `T0`, `Tome 39`, `Chapitre 0`, `HS2`), les formats implicites (`- 01 -`, `.02.`, `02 (sur 3)`), ainsi que les editions speciales comme les integrales et certains packs. Vous pouvez ensuite rechercher, filtrer par taille, selectionner des fichiers, copier les liens ou exporter les resultats pour une utilisation ulterieure. Tout fonctionne dans le navigateur et toutes les preferences sont stockees en local.
 
 ## Fonctionnalites principales
 - Detection robuste des liens ed2k de la page, y compris les liens percent-encodes, avec badge affichant le nombre de correspondances.
-- Extraction avancee du tome/volume avec une colonne dediee et un tri par defaut qui met les tomes les plus eleves en haut tout en gardant les tomes inconnus a la fin.
-- L'extraction gere les marqueurs explicites, les numerotations implicites, et des editions speciales comme les integrales (`INT`) et certains packs (`PACK`).
+- Extraction avancee du tome/volume/chapitre avec une colonne dediee et un tri par defaut qui met les tomes les plus eleves en haut tout en gardant les tomes inconnus a la fin.
+- L'extraction gere les marqueurs explicites (incluant Tome 0, Chapitre 0, HS, volumes numerotes), les numerotations implicites, et des editions speciales comme les integrales (`INT`) et certains packs (`PACK`).
 - Clic sur le nom d'un fichier pour cocher/decocher la ligne et copier immediatement son lien.
 - Fenetre modale claire avec selection multiple, selection par plage (**Shift+clic**), recherche regex et filtres Min/Max acceptant des valeurs lisibles (`10MB`, `2GB`, etc.).
 - Compteur de selection en direct dans l'entete pour voir immediatement combien de liens sont coches.

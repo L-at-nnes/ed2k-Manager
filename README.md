@@ -6,12 +6,12 @@
 [![Auto-update](https://img.shields.io/badge/auto--update-enabled-brightgreen.svg)](https://github.com/L-at-nnes/ed2k-Manager/blob/main/ed2k-manager.js)
 
 ## Overview
-ed2k Manager is a lightweight userscript for Tampermonkey or Violentmonkey that scans any web page for `ed2k://` links and presents them in a floating control panel. Detection is robust (including percent-encoded ed2k links), and tome extraction is now much more capable: it recognizes explicit markers (`T01`, `Tome 39`, `HS2`), implicit layouts (`- 01 -`, `.02.`, `02 (sur 3)`), and special editions like integrales and packs. From there you can search, filter by size, select items, copy the exact list of links, or export the results for later use. The script runs entirely inside the browser, stores preferences locally, and keeps itself up to date.
+ed2k Manager is a lightweight userscript for Tampermonkey or Violentmonkey that scans any web page for `ed2k://` links and presents them in a floating control panel. Detection is robust (including percent-encoded ed2k links), and tome extraction is now much more capable: it recognizes explicit markers (`T01`, `T0`, `Tome 39`, `Chapter 0`, `HS2`), implicit layouts (`- 01 -`, `.02.`, `02 (sur 3)`), and special editions like integrales and packs. From there you can search, filter by size, select items, copy the exact list of links, or export the results for later use. The script runs entirely inside the browser, stores preferences locally, and keeps itself up to date.
 
 ## Features at a Glance
 - Robust detection of ed2k links on the active page, including percent-encoded links such as `ed2k://%7Cfile%7C...`, with a badge that shows the number of matches.
-- Advanced tome extraction with a dedicated column and a default sort that brings the highest tome to the top while keeping unknown tomes at the end.
-- Tome extraction handles explicit markers, implicit numbering patterns, and special editions like integrales (`INT`) and range packs (`PACK`).
+- Advanced tome/volume/chapter extraction with a dedicated column and a default sort that brings the highest tome to the top while keeping unknown tomes at the end.
+- Tome extraction handles explicit markers (including Volume 0, Chapter 0, HS, numbered volumes), implicit numbering patterns, and special editions like integrales (`INT`) and range packs (`PACK`).
 - Click on a file name to toggle its checkbox and copy its ed2k link immediately.
 - Clean modal interface with bulk selection, Shift+click range selection, regex search, and min/max size filters that accept human friendly values (`10MB`, `2GB`, etc.).
 - A live selection counter in the header so you always see how many links are checked.

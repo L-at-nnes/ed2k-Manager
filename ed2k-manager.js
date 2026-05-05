@@ -778,6 +778,8 @@
     const EXPLICIT_TOME_PATTERNS = [
         // Hors-série / HS
         { re: /(?:^|[\s._\-–—\[(])(?:hs|hors\s*-?\s*s(?:erie|érie))\s*0*([0-9]{1,3})(?!\d)/i, prefix: 'HS', bonus: 200 },
+        // Chapitre / Chapter (including chapter 0)
+        { re: /(?:^|[\s._\-–—\[(])(?:chapitre|ch(?:ap)?(?:ter)?(?:\.)?)\s*0*([0-9]{1,3})(?!\d)/i, prefix: 'C', bonus: 190 },
         // Tome / volume words
         { re: /(?:^|[\s._\-–—\[(])(?:tome|volume|vol(?:ume)?\.?)\s*0*([0-9]{1,3})(?!\d)/i, prefix: 'T', bonus: 180 },
         // Short markers: T01, V02, #03
@@ -786,7 +788,7 @@
 
     function isLikelyYear(n) { return n >= 1900 && n <= 2099; }
     function isValidTomeNumber(n) {
-        return Number.isFinite(n) && n >= 1 && n <= MAX_TOME_NUMBER && !isLikelyYear(n);
+        return Number.isFinite(n) && n >= 0 && n <= MAX_TOME_NUMBER && !isLikelyYear(n);
     }
 
     function normalizeForScan(name) {
