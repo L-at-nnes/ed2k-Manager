@@ -364,6 +364,7 @@
     .ed2k-logo{font-weight:800;color:#022;letter-spacing:0.6px;font-family:Inter,Segoe UI,Roboto,Arial;font-size:16px;background:linear-gradient(90deg,#e6fbff,#7dd3fc);-webkit-background-clip:text;background-clip:text;color:transparent;text-transform:lowercase}
     .ed2k-rev-btn .ed2k-logo-wrap{display:flex;align-items:center;justify-content:center;width:100%;height:100%;border-radius:50%;background:radial-gradient(circle at 30% 30%, rgba(255,255,255,0.12), transparent 40%);}
     .ed2k-rev-modal{position:fixed;right:24px;bottom:88px;z-index:9999998;width:880px;max-width:calc(100% - 48px);max-height:80vh;background:#07101a;border-radius:12px;padding:14px;box-shadow:0 20px 60px rgba(2,6,23,0.8);overflow:hidden;display:flex;flex-direction:column;color:#e6eef8;font-family:system-ui,Segoe UI,Roboto,Arial}
+    .ed2k-rev-modal.minimized{display:none}
     .ed2k-rev-header{display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.04);flex-wrap:wrap} 
     .ed2k-rev-title{font-weight:700;color:#7dd3fc;font-size:14px}
     .ed2k-rev-selection{font-size:12px;color:#bfefff;opacity:0.95;padding:4px 8px;border:1px solid rgba(255,255,255,0.06);border-radius:999px;background:rgba(255,255,255,0.04)}
@@ -461,10 +462,24 @@
     let modal = null;
     let buttonAppended = false;
 
+    function minimizeModal() {
+        if (!modal || !document.body.contains(modal)) return;
+        modal.classList.add('minimized');
+        btn.title = 'Restaurer ed2k Manager';
+    }
+
+    function restoreModal() {
+        if (!modal || !document.body.contains(modal)) return false;
+        modal.classList.remove('minimized');
+        btn.title = 'Afficher les liens ed2k';
+        return true;
+    }
+
     function buildModal(items) {
         if (modal) modal.remove();
     modal = document.createElement('div');
     modal.className = 'ed2k-rev-modal';
+    btn.title = 'Afficher les liens ed2k';
 
         const header = document.createElement('div'); header.className = 'ed2k-rev-header';
         const title = document.createElement('div'); title.className = 'ed2k-rev-title'; title.textContent = `ed2k — ${items.length} trouvé(s)`;
@@ -754,8 +769,8 @@
                 }
                 nameDiv.title = 'Cliquer pour copier le lien';
                 nameDiv.addEventListener('click', async (evt) => {
-                    const selectedText = String(window.getSelection ? window.getSelection().toString() : '').trim();
-                    if (renamePanel.classList.contains('open') && selectedText && it.name.includes(selectedText)) {
+                    const selectedText = String(window.getSelection ? window.getSelection().toString() : '');
+                    if (renamePanel.classList.contains('open') && selectedText.trim() && it.name.includes(selectedText)) {
                         renameFindInput.value = selectedText;
                         updateRenameStatus();
                         evt.preventDefault();
@@ -808,11 +823,20 @@
             </svg>
             <span>L@nnes</span>
         `;
+        const footerActions = document.createElement('div');
+        footerActions.style.display = 'flex';
+        footerActions.style.gap = '8px';
+        footerActions.style.alignItems = 'center';
+        const minimizeBtn = document.createElement('button'); minimizeBtn.className = 'ed2k-btn'; minimizeBtn.textContent = 'R\u00e9duire';
+        minimizeBtn.title = 'Masquer la fen\u00eatre sans perdre les modifications en cours';
+        minimizeBtn.addEventListener('click', minimizeModal);
+        footerActions.appendChild(minimizeBtn);
         // right: close button (ensure it closes modal)
         const closeBtn = document.createElement('button'); closeBtn.className = 'ed2k-btn'; closeBtn.textContent = 'Fermer';
-        closeBtn.addEventListener('click', () => { try { modal.remove(); modal = null; } catch (e) {} });
+        closeBtn.addEventListener('click', () => { try { modal.remove(); modal = null; btn.title = 'Afficher les liens ed2k'; } catch (e) {} });
+        footerActions.appendChild(closeBtn);
         footer.appendChild(credit);
-        footer.appendChild(closeBtn);
+        footer.appendChild(footerActions);
 
         modal.appendChild(header); modal.appendChild(renamePanel); modal.appendChild(list); modal.appendChild(footer);
         document.body.appendChild(modal);
@@ -1024,7 +1048,7 @@
             if (!copied) { flashButton(copyBtn, 'Erreur'); return; }
             flashButton(copyBtn, 'Copié!');
             // close modal after copying selection
-            setTimeout(() => { try { modal.remove(); modal = null; } catch(e){} }, 300);
+            setTimeout(() => { try { modal.remove(); modal = null; btn.title = 'Afficher les liens ed2k'; } catch(e){} }, 300);
         });
 
         // copy all links (all items, regardless of checkbox)
@@ -1034,7 +1058,7 @@
             const copied = await copyTextToClipboard(links);
             if (!copied) { flashButton(copyAllBtn, 'Erreur'); return; }
             flashButton(copyAllBtn, 'Copié tout!');
-            setTimeout(() => { try { modal.remove(); modal = null; } catch(e){} }, 300);
+            setTimeout(() => { try { modal.remove(); modal = null; btn.title = 'Afficher les liens ed2k'; } catch(e){} }, 300);
         });
 
         // export CSV
@@ -1248,7 +1272,7 @@
         });
 
         // handle Escape to close
-        function onEsc(e){ if (e.key === 'Escape' || e.key === 'Esc') { try{ modal.remove(); modal=null; }catch(e){} document.removeEventListener('keydown', onEsc); } }
+        function onEsc(e){ if (e.key === 'Escape' || e.key === 'Esc') { try{ modal.remove(); modal=null; btn.title = 'Afficher les liens ed2k'; }catch(e){} document.removeEventListener('keydown', onEsc); } }
         document.addEventListener('keydown', onEsc);
 
         // initial render
@@ -1418,7 +1442,16 @@
     // toggle modal when clicking the button: if open -> close, else open
     btn.addEventListener('click', () => {
         try {
-            if (modal && document.body.contains(modal)) { modal.remove(); modal = null; return; }
+            if (modal && document.body.contains(modal)) {
+                if (modal.classList.contains('minimized')) {
+                    restoreModal();
+                    return;
+                }
+                modal.remove();
+                modal = null;
+                btn.title = 'Afficher les liens ed2k';
+                return;
+            }
             const items = findEd2kLinks();
             if (!items.length) {
                 // small pulse
