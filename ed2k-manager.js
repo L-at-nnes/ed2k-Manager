@@ -131,6 +131,21 @@
         return safeDecodeURIComponent(pipeDecoded);
     }
 
+    function encodeEd2kFileName(name) {
+        // encodeURIComponent leaves a few punctuation chars raw; encode them too
+        // so rebuilt ed2k links stay safe in href attributes and external clients.
+        return encodeURIComponent(String(name || '')).replace(/[!'()*]/g, ch =>
+            '%' + ch.charCodeAt(0).toString(16).toUpperCase()
+        );
+    }
+
+    function replaceEd2kFileName(link, newName) {
+        const normalized = ensureTrailingSlash(String(link || '').replace(/^ed2k:\/\//i, ED2K_PREFIX));
+        const match = normalized.match(/^ed2k:\/\/\|file\|([^|]+)(\|[0-9]+\|[a-fA-F0-9]{32}\|.*)$/i);
+        if (!match) return null;
+        return `${ED2K_PREFIX}|file|${encodeEd2kFileName(newName)}${match[2]}`;
+    }
+
     function stripTrailingPunctuation(candidate) {
         // Remove common trailing punctuation that may follow a link in plain text.
         return String(candidate || '').replace(/[)\].,!?:;]+$/g, '');
@@ -370,6 +385,10 @@
     .ed2k-actions-menu.open{display:flex}
     .ed2k-menu-item{width:100%;text-align:left}
     .ed2k-btn{min-width:88px;text-align:center}
+    .ed2k-rename-panel{display:none;gap:8px;align-items:center;flex-wrap:wrap;padding:8px;margin:0 8px 8px;border-bottom:1px solid rgba(255,255,255,0.05)}
+    .ed2k-rename-panel.open{display:flex}
+    .ed2k-rename-input{padding:7px 9px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);background:rgba(255,255,255,0.03);color:#e6fbff;min-width:220px}
+    .ed2k-rename-status{font-size:12px;color:#bfefff;opacity:0.9}
     .ed2k-rev-list{overflow:auto;padding:8px;flex:1;background:transparent}
     table.ed2k-table{width:100%;border-collapse:collapse;font-size:13px;color:#cfe8f6}
     table.ed2k-table th, table.ed2k-table td{padding:10px 8px;border-bottom:1px dashed rgba(255,255,255,0.03);}
@@ -460,6 +479,7 @@
     const deselectAllBtn = document.createElement('button'); deselectAllBtn.className = 'ed2k-btn ed2k-menu-item'; deselectAllBtn.textContent = 'Tout déselectionner';
     const copyBtn = document.createElement('button'); copyBtn.className = 'ed2k-btn primary'; copyBtn.textContent = 'Copier';
     const copyAllBtn = document.createElement('button'); copyAllBtn.className = 'ed2k-btn'; copyAllBtn.textContent = 'Copier tout';
+    const renameToggleBtn = document.createElement('button'); renameToggleBtn.className = 'ed2k-btn'; renameToggleBtn.textContent = 'Renommer';
     const exportBtn = document.createElement('button'); exportBtn.className = 'ed2k-btn'; exportBtn.textContent = 'Exporter CSV';
     const exportCollectionBtn = document.createElement('button'); exportCollectionBtn.className = 'ed2k-btn'; exportCollectionBtn.textContent = 'Exporter .emulecollection';
     const importHashesBtn = document.createElement('button'); importHashesBtn.className = 'ed2k-btn'; importHashesBtn.textContent = 'Charger hash';
@@ -517,10 +537,23 @@
     toolbar.appendChild(selectNewBtn);
     toolbar.appendChild(copyBtn);
     toolbar.appendChild(copyAllBtn);
+    toolbar.appendChild(renameToggleBtn);
     toolbar.appendChild(exportMenuWrap);
     toolbar.appendChild(hashStatus);
     toolbar.appendChild(importHashesInput);
         header.appendChild(toolbar);
+
+        const renamePanel = document.createElement('div'); renamePanel.className = 'ed2k-rename-panel';
+        const renameFindInput = document.createElement('input'); renameFindInput.className = 'ed2k-rename-input'; renameFindInput.placeholder = 'Texte \u00e0 remplacer';
+        const renameReplaceInput = document.createElement('input'); renameReplaceInput.className = 'ed2k-rename-input'; renameReplaceInput.placeholder = 'Remplacer par';
+        const renameSelectedBtn = document.createElement('button'); renameSelectedBtn.className = 'ed2k-btn primary'; renameSelectedBtn.textContent = 'S\u00e9lection';
+        const renameVisibleBtn = document.createElement('button'); renameVisibleBtn.className = 'ed2k-btn'; renameVisibleBtn.textContent = 'R\u00e9sultats filtr\u00e9s';
+        const renameStatus = document.createElement('div'); renameStatus.className = 'ed2k-rename-status'; renameStatus.textContent = '0 lien concern\u00e9';
+        renamePanel.appendChild(renameFindInput);
+        renamePanel.appendChild(renameReplaceInput);
+        renamePanel.appendChild(renameSelectedBtn);
+        renamePanel.appendChild(renameVisibleBtn);
+        renamePanel.appendChild(renameStatus);
 
         const list = document.createElement('div'); list.className = 'ed2k-rev-list';
 
@@ -531,6 +564,7 @@
         // Selection state persists across re-renders and enables Shift+click range selection.
         const selectedLinks = new Set();
         let lastClickedLink = null;
+        let currentVisibleItems = [];
 
         function getVisibleCheckboxes() {
             return Array.from(modal.querySelectorAll('tbody input.ed2k-row-cb'));
@@ -538,6 +572,41 @@
 
         function getSelectedItems() {
             return items.filter(it => selectedLinks.has(it.link));
+        }
+
+        function getFilteredItems(query) {
+            const filterFn = makeFilterFromQuery(query || '');
+            const minBytes = parseSize(minInput.value);
+            const maxBytes = parseSize(maxInput.value);
+            const filtered = items.filter(it => {
+                if (!filterFn(it)) return false;
+                const sizeNum = parseInt(it.size || 0, 10) || 0;
+                if (minBytes != null && sizeNum < minBytes) return false;
+                if (maxBytes != null && sizeNum > maxBytes) return false;
+                return true;
+            }).slice();
+            filtered.sort((a, b) => {
+                if (sortState.col === 'tome') {
+                    const aMissing = !Number.isFinite(a.tomeSortValue);
+                    const bMissing = !Number.isFinite(b.tomeSortValue);
+                    // Always keep items without tome information at the end.
+                    if (aMissing && !bMissing) return 1;
+                    if (bMissing && !aMissing) return -1;
+                    if (!aMissing && !bMissing && a.tomeSortValue !== b.tomeSortValue) {
+                        return sortState.dir * (a.tomeSortValue - b.tomeSortValue);
+                    }
+                    return a.name.localeCompare(b.name);
+                }
+                if (sortState.col === 'name') return sortState.dir * a.name.localeCompare(b.name);
+                if (sortState.col === 'size') {
+                    const aSize = parseInt(a.size || 0, 10) || 0;
+                    const bSize = parseInt(b.size || 0, 10) || 0;
+                    if (aSize !== bSize) return sortState.dir * (aSize - bSize);
+                    return a.name.localeCompare(b.name);
+                }
+                return 0;
+            });
+            return filtered;
         }
 
         function hasImportedHash(item) {
@@ -655,41 +724,11 @@
             syncSelectedFromVisible();
             tbody.innerHTML = '';
             const frag = document.createDocumentFragment();
-            const filterFn = makeFilterFromQuery(query || '');
-            // apply size filters as well
-            const minBytes = parseSize(minInput.value);
-            const maxBytes = parseSize(maxInput.value);
-
-            const filtered = items.filter(it => {
-                if (!filterFn(it)) return false;
-                const sizeNum = parseInt(it.size||0,10) || 0;
-                if (minBytes != null && sizeNum < minBytes) return false;
-                if (maxBytes != null && sizeNum > maxBytes) return false;
-                return true;
-            }).slice();
-            filtered.sort((a, b) => {
-                if (sortState.col === 'tome') {
-                    const aMissing = !Number.isFinite(a.tomeSortValue);
-                    const bMissing = !Number.isFinite(b.tomeSortValue);
-                    // Always keep items without tome information at the end.
-                    if (aMissing && !bMissing) return 1;
-                    if (bMissing && !aMissing) return -1;
-                    if (!aMissing && !bMissing && a.tomeSortValue !== b.tomeSortValue) {
-                        return sortState.dir * (a.tomeSortValue - b.tomeSortValue);
-                    }
-                    return a.name.localeCompare(b.name);
-                }
-                if (sortState.col === 'name') return sortState.dir * a.name.localeCompare(b.name);
-                if (sortState.col === 'size') {
-                    const aSize = parseInt(a.size || 0, 10) || 0;
-                    const bSize = parseInt(b.size || 0, 10) || 0;
-                    if (aSize !== bSize) return sortState.dir * (aSize - bSize);
-                    return a.name.localeCompare(b.name);
-                }
-                return 0;
-            });
+            const filtered = getFilteredItems(query);
+            currentVisibleItems = filtered;
             // update title count dynamically
             try { title.textContent = `ed2k — ${filtered.length} trouvé(s)`; } catch(e){}
+            updateRenameStatus();
             filtered.forEach((it, idx) => {
                 const tr = document.createElement('tr');
                 const cbTd = document.createElement('td');
@@ -715,6 +754,14 @@
                 }
                 nameDiv.title = 'Cliquer pour copier le lien';
                 nameDiv.addEventListener('click', async (evt) => {
+                    const selectedText = String(window.getSelection ? window.getSelection().toString() : '').trim();
+                    if (renamePanel.classList.contains('open') && selectedText && it.name.includes(selectedText)) {
+                        renameFindInput.value = selectedText;
+                        updateRenameStatus();
+                        evt.preventDefault();
+                        evt.stopPropagation();
+                        return;
+                    }
                     cb.checked = !cb.checked;
                     handleCheckboxClick(cb, evt);
                     lastClickedLink = cb.dataset.link || null;
@@ -767,7 +814,7 @@
         footer.appendChild(credit);
         footer.appendChild(closeBtn);
 
-        modal.appendChild(header); modal.appendChild(list); modal.appendChild(footer);
+        modal.appendChild(header); modal.appendChild(renamePanel); modal.appendChild(list); modal.appendChild(footer);
         document.body.appendChild(modal);
 
         // helpers
@@ -784,6 +831,62 @@
             const checked = boxes.filter(x => x.checked).length;
             master.checked = checked === boxes.length;
             master.indeterminate = checked > 0 && checked < boxes.length;
+        }
+
+        function countRenameTargets(sourceItems, findText) {
+            if (!findText) return 0;
+            return sourceItems.reduce((count, it) => count + (String(it.name || '').includes(findText) ? 1 : 0), 0);
+        }
+
+        function updateRenameStatus() {
+            if (!renamePanel.classList.contains('open')) return;
+            const findText = renameFindInput.value;
+            if (!findText) {
+                renameStatus.textContent = 'Texte \u00e0 remplacer requis';
+                return;
+            }
+            const selectedCount = countRenameTargets(getSelectedItems(), findText);
+            const visibleCount = countRenameTargets(currentVisibleItems, findText);
+            renameStatus.textContent = `${selectedCount} s\u00e9lection / ${visibleCount} filtr\u00e9(s)`;
+        }
+
+        function updateItemAfterRename(item, newName) {
+            const newLink = replaceEd2kFileName(item.link, newName);
+            if (!newLink || newLink === item.link) return false;
+            const oldLink = item.link;
+            const wasSelected = selectedLinks.has(oldLink);
+            const tomeInfo = extractTomeNumber(newName);
+            item.name = newName;
+            item.link = newLink;
+            item.tomeDisplay = tomeInfo.display;
+            item.tomeSortValue = tomeInfo.sortValue;
+            itemByLink.delete(oldLink);
+            itemByLink.set(newLink, item);
+            if (wasSelected) {
+                selectedLinks.delete(oldLink);
+                selectedLinks.add(newLink);
+            }
+            return true;
+        }
+
+        function applyRenameTo(sourceItems, button) {
+            const findText = renameFindInput.value;
+            const replaceText = renameReplaceInput.value;
+            if (!findText) { flashButton(button, 'Texte requis'); return; }
+            let changed = 0;
+            sourceItems.forEach(it => {
+                const oldName = String(it.name || '');
+                if (!oldName.includes(findText)) return;
+                const newName = oldName.split(findText).join(replaceText);
+                if (updateItemAfterRename(it, newName)) changed += 1;
+            });
+            if (!changed) {
+                flashButton(button, 'Aucun match');
+                updateRenameStatus();
+                return;
+            }
+            renderRows(search.value);
+            flashButton(button, `${changed} renomm\u00e9(s)`);
         }
 
         // listeners
@@ -805,6 +908,16 @@
             selectedLinks.clear();
             setAllVisible(false);
         });
+
+        renameToggleBtn.addEventListener('click', () => {
+            renamePanel.classList.toggle('open');
+            updateRenameStatus();
+            if (renamePanel.classList.contains('open')) renameFindInput.focus();
+        });
+        renameFindInput.addEventListener('input', updateRenameStatus);
+        renameReplaceInput.addEventListener('input', updateRenameStatus);
+        renameSelectedBtn.addEventListener('click', () => applyRenameTo(getSelectedItems(), renameSelectedBtn));
+        renameVisibleBtn.addEventListener('click', () => applyRenameTo(currentVisibleItems, renameVisibleBtn));
 
         let selectMenuOpen = false;
         let exportMenuOpen = false;
