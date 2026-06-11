@@ -306,7 +306,8 @@
         };
     }
 
-    function findEd2kLinks() {
+    function findEd2kLinks(root) {
+        root = root || document.body;
         const found = new Map(); // key by normalized link
 
         function addCandidate(rawLink) {
@@ -316,7 +317,10 @@
         }
 
         // 1) anchors with ed2k hrefs (including percent-encoded pipes)
-        document.querySelectorAll('a[href]').forEach(a => {
+        const anchors = [];
+        if (root.nodeType === Node.ELEMENT_NODE && root.matches && root.matches('a[href]')) anchors.push(root);
+        if (root.querySelectorAll) anchors.push(...root.querySelectorAll('a[href]'));
+        anchors.forEach(a => {
             // Exclude our own UI elements
             if (a.closest('.ed2k-rev-btn') || a.closest('.ed2k-rev-modal')) return;
             const href = a.getAttribute('href') || '';
@@ -326,7 +330,7 @@
 
         // 2) plain text nodes containing ed2k links
         const walker = document.createTreeWalker(
-            document.body,
+            root,
             NodeFilter.SHOW_TEXT,
             {
                 acceptNode(node) {
@@ -354,6 +358,10 @@
         }
 
         return Array.from(found.values());
+    }
+
+    function countEd2kLinks(root) {
+        return findEd2kLinks(root).length;
     }
 
     // === UI creation ===
@@ -386,6 +394,7 @@
     .ed2k-actions-menu.open{display:flex}
     .ed2k-menu-item{width:100%;text-align:left}
     .ed2k-btn{min-width:88px;text-align:center}
+    .ed2k-icon-btn{min-width:34px;width:34px;padding:6px 0;font-size:16px;line-height:1}
     .ed2k-rename-panel{display:none;gap:8px;align-items:center;flex-wrap:wrap;padding:8px;margin:0 8px 8px;border-bottom:1px solid rgba(255,255,255,0.05)}
     .ed2k-rename-panel.open{display:flex}
     .ed2k-rename-input{padding:7px 9px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);background:rgba(255,255,255,0.03);color:#e6fbff;min-width:220px}
@@ -400,6 +409,8 @@
     .ed2k-btn.primary{background:linear-gradient(90deg,#5fd6f6,#60a5fa);color:#022;border:none}
     .ed2k-empty{padding:28px;text-align:center;color:#9aa4b2}
     a.ed2k-link{color:#7dd3fc;text-decoration:none}
+    .ed2k-zone-highlight{position:fixed;z-index:9999996;border:2px solid #5fd6f6;background:rgba(95,214,246,0.08);box-shadow:0 0 0 99999px rgba(2,6,23,0.20);pointer-events:none;border-radius:6px}
+    .ed2k-zone-tip{position:fixed;z-index:9999997;padding:7px 10px;border-radius:8px;background:rgba(2,17,27,0.96);border:1px solid rgba(255,255,255,0.12);color:#e6fbff;font:12px system-ui,Segoe UI,Roboto,Arial;pointer-events:none;box-shadow:0 8px 24px rgba(0,0,0,0.35)}
 
     /* Badge on the floating button */
     .ed2k-badge{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;padding:0 6px;border-radius:999px;background:#021827;color:#9ef;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;box-shadow:0 6px 14px rgba(2,6,23,0.5)}
@@ -475,6 +486,125 @@
         return true;
     }
 
+    function startZonePicker() {
+        const previousModal = modal && document.body.contains(modal) ? modal : null;
+        const countCache = new WeakMap();
+        const highlight = document.createElement('div');
+        const tip = document.createElement('div');
+        let currentCandidate = null;
+        let currentItems = [];
+        let currentCandidates = [];
+        let currentCandidateIndex = 0;
+        let lastTarget = null;
+
+        highlight.className = 'ed2k-zone-highlight';
+        tip.className = 'ed2k-zone-tip';
+        tip.textContent = 'Survole une zone contenant des liens ed2k';
+        document.body.appendChild(highlight);
+        document.body.appendChild(tip);
+        if (previousModal) minimizeModal();
+
+        function cachedCount(el) {
+            if (!el || el.nodeType !== Node.ELEMENT_NODE) return 0;
+            if (countCache.has(el)) return countCache.get(el);
+            const count = countEd2kLinks(el);
+            countCache.set(el, count);
+            return count;
+        }
+
+        function collectCandidates(startEl) {
+            const found = [];
+            let el = startEl;
+            while (el && el !== document.documentElement) {
+                if (el.closest && (el.closest('.ed2k-rev-btn') || el.closest('.ed2k-rev-modal'))) return [];
+                const count = cachedCount(el);
+                if (count > 0) found.push({ el, count });
+                if (el === document.body) break;
+                el = el.parentElement;
+            }
+            return found;
+        }
+
+        function chooseDefaultCandidate(candidates) {
+            if (!candidates.length) return -1;
+            const usefulIndex = candidates.findIndex(entry => entry.count > 1);
+            return usefulIndex === -1 ? 0 : usefulIndex;
+        }
+
+        function drawCandidate(entry) {
+            if (!entry) {
+                currentCandidate = null;
+                currentItems = [];
+                highlight.style.display = 'none';
+                tip.textContent = 'Aucun lien ed2k dans cette zone';
+                return;
+            }
+            currentCandidate = entry.el;
+            currentItems = findEd2kLinks(entry.el);
+            const rect = entry.el.getBoundingClientRect();
+            highlight.style.display = 'block';
+            highlight.style.left = `${Math.max(0, rect.left)}px`;
+            highlight.style.top = `${Math.max(0, rect.top)}px`;
+            highlight.style.width = `${Math.max(0, Math.min(window.innerWidth, rect.right) - Math.max(0, rect.left))}px`;
+            highlight.style.height = `${Math.max(0, Math.min(window.innerHeight, rect.bottom) - Math.max(0, rect.top))}px`;
+            const tipLeft = Math.min(window.innerWidth - 260, Math.max(8, rect.left));
+            const tipTop = Math.max(8, rect.top - 36);
+            tip.style.left = `${tipLeft}px`;
+            tip.style.top = `${tipTop}px`;
+            tip.textContent = `${currentItems.length} lien(s) ed2k - clic pour ouvrir, molette pour ajuster, Esc pour annuler`;
+        }
+
+        function cleanup(restorePrevious) {
+            document.removeEventListener('mousemove', onMouseMove, true);
+            document.removeEventListener('click', onClick, true);
+            document.removeEventListener('keydown', onKeyDown, true);
+            document.removeEventListener('wheel', onWheel, true);
+            try { highlight.remove(); tip.remove(); } catch (e) {}
+            if (restorePrevious && previousModal && document.body.contains(previousModal)) restoreModal();
+        }
+
+        function onMouseMove(evt) {
+            const target = evt.target;
+            if (!target || target === lastTarget || !target.closest) return;
+            lastTarget = target;
+            currentCandidates = collectCandidates(target);
+            currentCandidateIndex = chooseDefaultCandidate(currentCandidates);
+            drawCandidate(currentCandidates[currentCandidateIndex]);
+        }
+
+        function onWheel(evt) {
+            if (!currentCandidates.length) return;
+            evt.preventDefault();
+            evt.stopPropagation();
+            const dir = evt.deltaY > 0 ? 1 : -1;
+            currentCandidateIndex = Math.max(0, Math.min(currentCandidates.length - 1, currentCandidateIndex + dir));
+            drawCandidate(currentCandidates[currentCandidateIndex]);
+        }
+
+        function onClick(evt) {
+            evt.preventDefault();
+            evt.stopPropagation();
+            if (!currentCandidate || !currentItems.length) {
+                tip.textContent = 'Choisis une zone contenant des liens ed2k';
+                return;
+            }
+            cleanup(false);
+            buildModal(currentItems);
+        }
+
+        function onKeyDown(evt) {
+            if (evt.key === 'Escape' || evt.key === 'Esc') {
+                evt.preventDefault();
+                cleanup(true);
+            }
+        }
+
+        document.addEventListener('mousemove', onMouseMove, true);
+        document.addEventListener('click', onClick, true);
+        document.addEventListener('keydown', onKeyDown, true);
+        document.addEventListener('wheel', onWheel, { capture: true, passive: false });
+    }
+
     function buildModal(items) {
         if (modal) modal.remove();
     modal = document.createElement('div');
@@ -494,6 +624,7 @@
     const deselectAllBtn = document.createElement('button'); deselectAllBtn.className = 'ed2k-btn ed2k-menu-item'; deselectAllBtn.textContent = 'Tout déselectionner';
     const copyBtn = document.createElement('button'); copyBtn.className = 'ed2k-btn primary'; copyBtn.textContent = 'Copier';
     const copyAllBtn = document.createElement('button'); copyAllBtn.className = 'ed2k-btn'; copyAllBtn.textContent = 'Copier tout';
+    const zonePickBtn = document.createElement('button'); zonePickBtn.className = 'ed2k-btn ed2k-icon-btn'; zonePickBtn.textContent = '⌖'; zonePickBtn.title = 'Choisir une zone de la page';
     const renameToggleBtn = document.createElement('button'); renameToggleBtn.className = 'ed2k-btn'; renameToggleBtn.textContent = 'Renommer';
     const exportBtn = document.createElement('button'); exportBtn.className = 'ed2k-btn'; exportBtn.textContent = 'Exporter CSV';
     const exportCollectionBtn = document.createElement('button'); exportCollectionBtn.className = 'ed2k-btn'; exportCollectionBtn.textContent = 'Exporter .emulecollection';
@@ -552,6 +683,7 @@
     toolbar.appendChild(selectNewBtn);
     toolbar.appendChild(copyBtn);
     toolbar.appendChild(copyAllBtn);
+    toolbar.appendChild(zonePickBtn);
     toolbar.appendChild(renameToggleBtn);
     toolbar.appendChild(exportMenuWrap);
     toolbar.appendChild(hashStatus);
@@ -563,11 +695,14 @@
         const renameReplaceInput = document.createElement('input'); renameReplaceInput.className = 'ed2k-rename-input'; renameReplaceInput.placeholder = 'Remplacer par';
         const renameSelectedBtn = document.createElement('button'); renameSelectedBtn.className = 'ed2k-btn primary'; renameSelectedBtn.textContent = 'S\u00e9lection';
         const renameVisibleBtn = document.createElement('button'); renameVisibleBtn.className = 'ed2k-btn'; renameVisibleBtn.textContent = 'R\u00e9sultats filtr\u00e9s';
+        const renameUndoBtn = document.createElement('button'); renameUndoBtn.className = 'ed2k-btn'; renameUndoBtn.textContent = 'Annuler';
+        renameUndoBtn.disabled = true;
         const renameStatus = document.createElement('div'); renameStatus.className = 'ed2k-rename-status'; renameStatus.textContent = '0 lien concern\u00e9';
         renamePanel.appendChild(renameFindInput);
         renamePanel.appendChild(renameReplaceInput);
         renamePanel.appendChild(renameSelectedBtn);
         renamePanel.appendChild(renameVisibleBtn);
+        renamePanel.appendChild(renameUndoBtn);
         renamePanel.appendChild(renameStatus);
 
         const list = document.createElement('div'); list.className = 'ed2k-rev-list';
@@ -580,6 +715,7 @@
         const selectedLinks = new Set();
         let lastClickedLink = null;
         let currentVisibleItems = [];
+        const renameHistory = [];
 
         function getVisibleCheckboxes() {
             return Array.from(modal.querySelectorAll('tbody input.ed2k-row-cb'));
@@ -863,6 +999,7 @@
         }
 
         function updateRenameStatus() {
+            renameUndoBtn.disabled = renameHistory.length === 0;
             if (!renamePanel.classList.contains('open')) return;
             const findText = renameFindInput.value;
             if (!findText) {
@@ -872,6 +1009,17 @@
             const selectedCount = countRenameTargets(getSelectedItems(), findText);
             const visibleCount = countRenameTargets(currentVisibleItems, findText);
             renameStatus.textContent = `${selectedCount} s\u00e9lection / ${visibleCount} filtr\u00e9(s)`;
+        }
+
+        function snapshotItem(item) {
+            return {
+                item,
+                name: item.name,
+                link: item.link,
+                tomeDisplay: item.tomeDisplay,
+                tomeSortValue: item.tomeSortValue,
+                selected: selectedLinks.has(item.link),
+            };
         }
 
         function updateItemAfterRename(item, newName) {
@@ -898,19 +1046,46 @@
             const replaceText = renameReplaceInput.value;
             if (!findText) { flashButton(button, 'Texte requis'); return; }
             let changed = 0;
+            const historyEntry = [];
             sourceItems.forEach(it => {
                 const oldName = String(it.name || '');
                 if (!oldName.includes(findText)) return;
                 const newName = oldName.split(findText).join(replaceText);
-                if (updateItemAfterRename(it, newName)) changed += 1;
+                const before = snapshotItem(it);
+                if (updateItemAfterRename(it, newName)) {
+                    historyEntry.push(before);
+                    changed += 1;
+                }
             });
             if (!changed) {
                 flashButton(button, 'Aucun match');
                 updateRenameStatus();
                 return;
             }
+            renameHistory.push(historyEntry);
             renderRows(search.value);
             flashButton(button, `${changed} renomm\u00e9(s)`);
+        }
+
+        function undoLastRename() {
+            const historyEntry = renameHistory.pop();
+            if (!historyEntry || !historyEntry.length) {
+                updateRenameStatus();
+                flashButton(renameUndoBtn, 'Rien \u00e0 annuler');
+                return;
+            }
+            historyEntry.forEach(snapshot => {
+                itemByLink.delete(snapshot.item.link);
+                selectedLinks.delete(snapshot.item.link);
+                snapshot.item.name = snapshot.name;
+                snapshot.item.link = snapshot.link;
+                snapshot.item.tomeDisplay = snapshot.tomeDisplay;
+                snapshot.item.tomeSortValue = snapshot.tomeSortValue;
+                itemByLink.set(snapshot.item.link, snapshot.item);
+                if (snapshot.selected) selectedLinks.add(snapshot.item.link);
+            });
+            renderRows(search.value);
+            flashButton(renameUndoBtn, 'Annul\u00e9');
         }
 
         // listeners
@@ -933,6 +1108,10 @@
             setAllVisible(false);
         });
 
+        zonePickBtn.addEventListener('click', () => {
+            closeMenus();
+            startZonePicker();
+        });
         renameToggleBtn.addEventListener('click', () => {
             renamePanel.classList.toggle('open');
             updateRenameStatus();
@@ -942,6 +1121,7 @@
         renameReplaceInput.addEventListener('input', updateRenameStatus);
         renameSelectedBtn.addEventListener('click', () => applyRenameTo(getSelectedItems(), renameSelectedBtn));
         renameVisibleBtn.addEventListener('click', () => applyRenameTo(currentVisibleItems, renameVisibleBtn));
+        renameUndoBtn.addEventListener('click', undoLastRename);
 
         let selectMenuOpen = false;
         let exportMenuOpen = false;
