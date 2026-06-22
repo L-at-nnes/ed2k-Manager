@@ -20,7 +20,7 @@ ed2k Manager is a lightweight userscript for Tampermonkey or Violentmonkey that 
 - Cleaner top toolbar with clear priorities: `Sélectionner` dropdown for bulk selection helpers, direct `Copier` + `Tout copier` buttons, and an `Exporter` dropdown for CSV and `.emulecollection`.
 - A live selection counter in the header so you always see how many links are checked.
 - Copy helpers for the checked links or for the whole list, plus exports to CSV (`name,size,link`) and `.emulecollection` (exports use the selection when it exists, otherwise the full list).
-- Automatic decoding of encoded filenames along with readable size displays (bytes are shown in the tooltip for accuracy).
+- Automatic decoding of percent-encoded filenames; `+` characters are preserved as-is (literal `+`, not a space) along with readable size displays (bytes are shown in the tooltip for accuracy).
 - Context menu (right click the launcher button) to reposition or resize the button and reset preferences.
 - Fully documented codebase in English so outside contributors can understand the logic quickly.
 

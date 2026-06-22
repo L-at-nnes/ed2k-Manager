@@ -111,9 +111,8 @@
 
     function decodeFileName(raw) {
         try {
-            // some names are URL-encoded
-            let s = raw.replace(/\+/g, ' ');
-            s = decodeURIComponent(s);
+            // ed2k filenames use standard percent-encoding; '+' is a literal character, not a space
+            let s = decodeURIComponent(raw);
             s = s.replace(/\s+/g, ' ').trim();
             return s;
         } catch (e) { return raw; }
