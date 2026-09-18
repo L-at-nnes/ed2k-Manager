@@ -1169,7 +1169,7 @@
                 updateMemoryModeUi();
                 renderRows(search.value);
             } catch (e) {
-                flashButton(hashStatus, 'Erreur mémoire');
+                flashButton(hashStatus, 'Erreur mémoire', updateHashStatus);
             }
         });
 
@@ -1191,7 +1191,7 @@
                 const importedCount = externalHashSet.size;
                 hashStatus.textContent = importedCount ? `${importedCount} hash importés` : '0 hash importé';
             } catch (e) {
-                flashButton(hashStatus, 'Erreur import');
+                flashButton(hashStatus, 'Erreur import', updateHashStatus);
             } finally {
                 importHashesBtn.disabled = false;
                 importHashesBtn.textContent = 'Charger hash';
@@ -1467,10 +1467,18 @@
         obs.observe(document.body, { childList: true, subtree: true });
     }
 
-    function flashButton(el, txt) {
-        const orig = el.textContent;
+    function flashButton(el, txt, restoreFn) {
+        if (el.dataset.ed2kLabel === undefined) el.dataset.ed2kLabel = el.textContent;
         el.textContent = txt;
-        setTimeout(() => el.textContent = orig, 1100);
+        clearTimeout(el._ed2kFlashTimer);
+        el._ed2kFlashTimer = setTimeout(() => {
+            if (typeof restoreFn === 'function') {
+                restoreFn();
+            } else {
+                el.textContent = el.dataset.ed2kLabel;
+            }
+            delete el.dataset.ed2kLabel;
+        }, 1100);
     }
 
     async function copyTextToClipboard(text) {
