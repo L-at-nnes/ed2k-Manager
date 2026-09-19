@@ -1222,7 +1222,8 @@
                 selectedLinks.clear();
                 renderRows(search.value);
                 const importedCount = externalHashSet.size;
-                hashStatus.textContent = importedCount ? `${importedCount} hash importés` : '0 hash importé';
+                const importedMsg = importedCount ? `${importedCount} hash importés` : '0 hash importé';
+                flashButton(hashStatus, importedMsg, updateHashStatus);
             } catch (e) {
                 flashButton(hashStatus, 'Erreur import', updateHashStatus);
             } finally {
