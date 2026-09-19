@@ -1510,27 +1510,35 @@
     }
 
     // Tome / volume extraction: explicit patterns first, then safe inference.
-    const MAX_TOME_NUMBER = 299;
-    const INTEGRALE_SORT_VALUE = MAX_TOME_NUMBER + 1000;
-    const PACK_SORT_VALUE = MAX_TOME_NUMBER + 900;
-    const INTEGRALE_RE = /\b(?:int[eé]grale?s?|integral(?:e)?|omnibus|complete|collection)\b/i;
+    const MAX_TOME_NUMBER = 999;
+    const MAX_CHAPTER_NUMBER = 9999;
+    const INTEGRALE_SORT_VALUE = MAX_CHAPTER_NUMBER + 2000;
+    const PACK_SORT_VALUE = MAX_CHAPTER_NUMBER + 1900;
+    const INTEGRALE_RE = /\b(?:int[eé]grale?s?|omnibus|(?:edition\s+complete|complete\s+edition))\b/i;
     const PACK_RE = /\b(?:bdpack|pack)\b/i;
     const RANGE_RE = /\b0*([0-9]{1,3})\s*(?:a|à|to|\-)\s*0*([0-9]{1,3})\b/i;
+    // A range preceded by an explicit tome/volume marker is a pack even without the word "pack".
+    const RANGE_MARKER_RE = /\b(?:tomes?|vol(?:umes?)?|t)\s*0*([0-9]{1,3})\s*(?:a|à|to|\-)\s*(?:tomes?|vol(?:umes?)?|t)?\s*0*([0-9]{1,3})\b/i;
     const DASH_NORMALIZE_RE = /[\u2010-\u2015]/g; // normalize fancy dashes to '-'
 
     const EXPLICIT_TOME_PATTERNS = [
         // Hors-série / HS
-        { re: /(?:^|[\s._\-–—\[(])(?:hs|hors\s*-?\s*s(?:erie|érie))\s*0*([0-9]{1,3})(?!\d)/i, prefix: 'HS', bonus: 200 },
-        // Chapitre / Chapter (including chapter 0)
-        { re: /(?:^|[\s._\-–—\[(])(?:chapitre|ch(?:ap)?(?:ter)?(?:\.)?)\s*0*([0-9]{1,3})(?!\d)/i, prefix: 'C', bonus: 190 },
+        { re: /(?:^|[\s._\-–—\[(])(?:hs|hors\s*-?\s*s(?:erie|érie))\s*0*([0-9]{1,3})(?!\d)/i, prefix: 'HS', bonus: 200, max: MAX_TOME_NUMBER },
+        // Chapitre / Chapter (including chapter 0 and decimal chapters like 12.5)
+        { re: /(?:^|[\s._\-–—\[(])(?:chapitre|ch(?:ap)?(?:ter)?(?:\.)?)\s*0*([0-9]{1,4}(?:[.,][0-9]+)?)(?!\d)/i, prefix: 'C', bonus: 190, max: MAX_CHAPTER_NUMBER },
         // Tome / volume words
-        { re: /(?:^|[\s._\-–—\[(])(?:tome|volume|vol(?:ume)?\.?)\s*0*([0-9]{1,3})(?!\d)/i, prefix: 'T', bonus: 180 },
+        { re: /(?:^|[\s._\-–—\[(])(?:tome|volume|vol(?:ume)?\.?)\s*0*([0-9]{1,3})(?!\d)/i, prefix: 'T', bonus: 180, max: MAX_TOME_NUMBER },
         // Short markers: T01, V02, #03
-        { re: /(?:^|[\s._\-–—\[(])(?:t|v|#)\s*0*([0-9]{1,3})(?!\d)/i, prefix: 'T', bonus: 160 },
+        { re: /(?:^|[\s._\-–—\[(])(?:t|v|#)\s*0*([0-9]{1,3})(?!\d)/i, prefix: 'T', bonus: 160, max: MAX_TOME_NUMBER },
     ];
 
     function isLikelyYear(n) { return n >= 1900 && n <= 2099; }
-    function isValidTomeNumber(n) {
+    // Explicit markers (Tome/Chapitre/HS/...) are unambiguous: no year filtering.
+    function isValidExplicitNumber(value, max) {
+        return Number.isFinite(value) && value >= 0 && value <= max;
+    }
+    // Free inference (no marker) is ambiguous: reject numbers that look like a year.
+    function isValidInferredTomeNumber(n) {
         return Number.isFinite(n) && n >= 0 && n <= MAX_TOME_NUMBER && !isLikelyYear(n);
     }
 
@@ -1543,13 +1551,30 @@
         try { s = s.normalize('NFD').replace(/[\u0300-\u036f]/g, ''); } catch (e) {}
         // Unify frequent separators but keep overall structure.
         s = s.replace(/[_]+/g, ' ');
+        // Preserve decimal points between digits (e.g. "12.5") before stripping other dots.
+        s = s.replace(/([0-9])[.,]([0-9])/g, '$1\u0001$2');
         s = s.replace(/[.]+/g, ' ');
+        s = s.replace(/\u0001/g, '.');
         s = s.replace(/\s+/g, ' ').trim();
         return s.toLowerCase();
     }
 
-    function formatTome(prefix, n) {
-        return { display: prefix + String(n).padStart(2, '0'), sortValue: n };
+    function formatTome(prefix, rawValue) {
+        const str = String(rawValue).replace(',', '.');
+        const parts = str.split('.');
+        const paddedInt = String(parseInt(parts[0], 10)).padStart(2, '0');
+        const display = (parts.length > 1 && parts[1] !== '') ? `${paddedInt}.${parts[1]}` : paddedInt;
+        return { display: prefix + display, sortValue: parseFloat(str) };
+    }
+
+    // A range like "1 a 5" / "T01-T05" / "T01-05" only counts as a pack when it
+    // follows an explicit tome/volume marker, and the end must be greater than the start.
+    function isMarkedRangePack(scan) {
+        const m = scan.match(RANGE_MARKER_RE);
+        if (!m) return false;
+        const start = parseInt(m[1], 10);
+        const end = parseInt(m[2], 10);
+        return Number.isFinite(start) && Number.isFinite(end) && end > start;
     }
 
     function extractTomeNumber(name) {
@@ -1561,24 +1586,24 @@
         if (INTEGRALE_RE.test(scan)) {
             return { display: 'INT', sortValue: INTEGRALE_SORT_VALUE };
         }
-        if (PACK_RE.test(scan) && RANGE_RE.test(scan)) {
+        if (isMarkedRangePack(scan) || (PACK_RE.test(scan) && RANGE_RE.test(scan))) {
             return { display: 'PACK', sortValue: PACK_SORT_VALUE };
         }
 
         // 2) Explicit tome markers (most reliable).
-        for (const { re, prefix } of EXPLICIT_TOME_PATTERNS) {
+        for (const { re, prefix, max } of EXPLICIT_TOME_PATTERNS) {
             const match = scan.match(re);
             if (!match || !match[1]) continue;
-            const num = parseInt(match[1], 10);
-            if (!isValidTomeNumber(num)) continue;
-            return formatTome(prefix, num);
+            const value = parseFloat(String(match[1]).replace(',', '.'));
+            if (!isValidExplicitNumber(value, max)) continue;
+            return formatTome(prefix, match[1]);
         }
 
         // 3) Structured hints like "02 (sur 3)" or "02/03".
         const surMatch = scan.match(/(?:^|[^a-z0-9])0*([0-9]{1,3})\s*[\s._\-–—()[\]]*(?:sur|\/)\s*0*([0-9]{1,3})(?!\d)/i);
         if (surMatch && surMatch[1]) {
             const num = parseInt(surMatch[1], 10);
-            if (isValidTomeNumber(num)) return formatTome('T', num);
+            if (isValidExplicitNumber(num, MAX_TOME_NUMBER)) return formatTome('T', num);
         }
 
         // 4) Safe inference: pick the best separated number in range.
@@ -1588,7 +1613,7 @@
         while ((m = candidateRe.exec(scan)) !== null) {
             const rawDigits = m[2];
             const num = parseInt(rawDigits, 10);
-            if (!isValidTomeNumber(num)) continue;
+            if (!isValidInferredTomeNumber(num)) continue;
 
             const startIdx = m.index + (m[1] ? m[1].length : 0);
             const endIdx = startIdx + rawDigits.length;
