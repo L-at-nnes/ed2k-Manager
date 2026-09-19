@@ -11,6 +11,7 @@
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_deleteValue
+// @grant        GM_registerMenuCommand
 // @run-at       document-idle
 // @updateURL    https://raw.githubusercontent.com/L-at-nnes/ed2k-Manager/main/ed2k-manager.js
 // @downloadURL  https://raw.githubusercontent.com/L-at-nnes/ed2k-Manager/main/ed2k-manager.js
@@ -1684,9 +1685,8 @@
 
     function escapeHtml(s) { return String(s).replace(/[&<>"']/g, function(m){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]}); }
 
-    // event: button click
-    // toggle modal when clicking the button: if open -> close, else open
-    btn.addEventListener('click', () => {
+    // toggle modal: if open -> close, else open
+    function toggleModal() {
         try {
             if (modal && document.body.contains(modal)) {
                 if (modal.classList.contains('minimized')) {
@@ -1709,7 +1709,23 @@
             buildModal(items);
             try { updateBadge(); } catch (e) {}
         } catch(e) {}
-    });
+    }
+
+    // event: button click
+    btn.addEventListener('click', toggleModal);
+
+    function toggleButtonVisibility() {
+        prefs.showButton = !prefs.showButton;
+        savePrefs(prefs);
+        btn.style.display = prefs.showButton ? 'flex' : 'none';
+    }
+
+    try {
+        if (typeof GM_registerMenuCommand === 'function') {
+            GM_registerMenuCommand('Ouvrir ed2k Manager', toggleModal);
+            GM_registerMenuCommand('Afficher/masquer le bouton', toggleButtonVisibility);
+        }
+    } catch (e) {}
 
     // Right-click menu on the button: persistent settings (position, size, show/hide, reset)
     btn.addEventListener('contextmenu', (e) => {
@@ -1767,6 +1783,7 @@
             if (!buttonAppended && document.body) {
                 document.body.appendChild(btn);
                 buttonAppended = true;
+                btn.style.display = prefs.showButton ? 'flex' : 'none';
             }
             
             // Update badge
