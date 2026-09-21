@@ -1539,26 +1539,30 @@
 
     async function copyTextToClipboard(text) {
         try {
+            // GM_setClipboard has no focus/permission constraints, prefer it first.
+            if (typeof GM_setClipboard === 'function') {
+                GM_setClipboard(text);
+                return true;
+            }
+        } catch (e) {}
+        try {
             if (navigator.clipboard && navigator.clipboard.writeText) {
                 await navigator.clipboard.writeText(text);
                 return true;
             }
         } catch (e) {}
         try {
-            if (typeof GM_setClipboard !== 'undefined') {
-                GM_setClipboard(text);
-                return true;
-            }
-        } catch (e) {}
-        try {
-            fallbackCopyTextToClipboard(text);
-            return true;
+            return fallbackCopyTextToClipboard(text);
         } catch (e) {}
         return false;
     }
 
     function fallbackCopyTextToClipboard(text) {
-        const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch (e) {} ta.remove();
+        const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+        let ok = false;
+        try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+        ta.remove();
+        return ok;
     }
 
     function prettySize(bytes) {
