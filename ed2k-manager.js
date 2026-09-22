@@ -1286,14 +1286,23 @@
         });
 
         // export CSV
+        // Quote every field and, if it starts with a char Excel/Sheets would treat
+        // as a formula trigger (=, +, -, @, tab, CR), prefix it with ' to neutralize it:
+        // names come from arbitrary pages and must not be able to run formulas.
+        function csvField(value) {
+            const str = String(value == null ? '' : value);
+            const safe = /^[=+\-@\t\r]/.test(str) ? `'${str}` : str;
+            return `"${safe.replace(/"/g, '""')}"`;
+        }
+
         exportBtn.addEventListener('click', () => {
             try {
                 const selectedItems = getSelectedItems();
                 const exportItems = selectedItems.length ? selectedItems : items.slice();
                 if (!exportItems.length) { flashButton(exportBtn, 'Aucun lien'); return; }
                 const header = ['name','size','link'];
-                const rows = exportItems.map(it => ["\""+String(it.name).replace(/"/g,'""')+"\"", it.size, it.link].join(','));
-                const csv = [header.join(','), ...rows].join('\n');
+                const rows = exportItems.map(it => [csvField(it.name), csvField(it.size), csvField(it.link)].join(','));
+                const csv = '﻿' + [header.join(','), ...rows].join('\r\n');
                 const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a'); a.href = url; a.download = 'ed2k-links.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
