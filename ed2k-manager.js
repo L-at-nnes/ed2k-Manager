@@ -1315,6 +1315,11 @@
             try {
                 const selectedItems = getSelectedItems();
                 const exportItems = selectedItems.length ? selectedItems : items.slice();
+                // The .emulecollection format caps entries at 1024; warn before silently truncating.
+                if (exportItems.length > 1024) {
+                    const proceed = confirm(`${exportItems.length} liens : seuls les 1024 premiers seront exportés. Continuer ?`);
+                    if (!proceed) return;
+                }
                 const limitedItems = exportItems.slice(0, 1024);
                 const collectionBytes = buildEmuleCollection(limitedItems);
                 if (!collectionBytes) {
