@@ -923,6 +923,7 @@
             currentVisibleItems = filtered;
             // update title count dynamically
             try { title.textContent = `ed2k — ${filtered.length} trouvé(s)`; } catch(e){}
+            try { copyAllBtn.textContent = `Copier tout (${filtered.length})`; } catch(e){}
             updateRenameStatus();
             filtered.forEach((it, idx) => {
                 const tr = document.createElement('tr');
@@ -1276,9 +1277,9 @@
             flashButton(copyBtn, 'Copié!');
         });
 
-        // copy all links (all items, regardless of checkbox)
+        // copy all links currently visible (filtered), regardless of checkbox
         copyAllBtn.addEventListener('click', async () => {
-            const links = items.map(it => it.link).join('\n');
+            const links = currentVisibleItems.map(it => it.link).join('\n');
             if (!links) { flashButton(copyAllBtn, 'Aucun lien'); return; }
             const copied = await copyTextToClipboard(links);
             if (!copied) { flashButton(copyAllBtn, 'Erreur'); return; }
@@ -1298,7 +1299,7 @@
         exportBtn.addEventListener('click', () => {
             try {
                 const selectedItems = getSelectedItems();
-                const exportItems = selectedItems.length ? selectedItems : items.slice();
+                const exportItems = selectedItems.length ? selectedItems : currentVisibleItems.slice();
                 if (!exportItems.length) { flashButton(exportBtn, 'Aucun lien'); return; }
                 const header = ['name','size','link'];
                 const rows = exportItems.map(it => [csvField(it.name), csvField(it.size), csvField(it.link)].join(','));
@@ -1314,7 +1315,7 @@
         exportCollectionBtn.addEventListener('click', () => {
             try {
                 const selectedItems = getSelectedItems();
-                const exportItems = selectedItems.length ? selectedItems : items.slice();
+                const exportItems = selectedItems.length ? selectedItems : currentVisibleItems.slice();
                 // The .emulecollection format caps entries at 1024; warn before silently truncating.
                 if (exportItems.length > 1024) {
                     const proceed = confirm(`${exportItems.length} liens : seuls les 1024 premiers seront exportés. Continuer ?`);
