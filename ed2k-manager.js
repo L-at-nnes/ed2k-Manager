@@ -237,12 +237,29 @@
         safeSessionDelete(HASH_SESSION_SOURCE_KEY);
     }
 
+    // Read as bytes and decode from the BOM instead of always assuming UTF-8:
+    // hash lists redirected from PowerShell are commonly UTF-16 and would
+    // otherwise silently decode to 0 hashes.
     function readFileAsText(file) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
-            reader.onload = () => resolve(String(reader.result || ''));
+            reader.onload = () => {
+                try {
+                    const bytes = new Uint8Array(reader.result);
+                    let encoding = 'utf-8';
+                    let offset = 0;
+                    if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFE) {
+                        encoding = 'utf-16le'; offset = 2;
+                    } else if (bytes.length >= 2 && bytes[0] === 0xFE && bytes[1] === 0xFF) {
+                        encoding = 'utf-16be'; offset = 2;
+                    } else if (bytes.length >= 3 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
+                        offset = 3;
+                    }
+                    resolve(new TextDecoder(encoding).decode(bytes.subarray(offset)));
+                } catch (e) { reject(e); }
+            };
             reader.onerror = () => reject(reader.error || new Error('Unable to read file'));
-            reader.readAsText(file);
+            reader.readAsArrayBuffer(file);
         });
     }
 
@@ -1232,7 +1249,6 @@
                 externalHashSet = await parseHashesWithWorker(rawContent);
                 externalHashSource = file.name;
                 await persistCurrentHashSet();
-                selectedLinks.clear();
                 renderRows(search.value);
                 const importedCount = externalHashSet.size;
                 const importedMsg = importedCount ? `${importedCount} hash importés` : '0 hash importé';
