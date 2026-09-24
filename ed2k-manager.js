@@ -664,6 +664,9 @@
     const self = modal; // fixed reference to this instance, so this closure never
                          // confuses itself with a later modal reassigned to `modal`.
     modal.className = 'ed2k-rev-modal';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-label', 'ed2k Manager');
     btn.title = 'Afficher les liens ed2k';
 
         const header = document.createElement('div'); header.className = 'ed2k-rev-header';
@@ -763,7 +766,7 @@
         const list = document.createElement('div'); list.className = 'ed2k-rev-list';
 
     const table = document.createElement('table'); table.className = 'ed2k-table';
-    const thead = document.createElement('thead'); thead.innerHTML = '<tr><th style="width:36px"><input type="checkbox" id="ed2k-master"></th><th data-col="tome" style="width:60px;text-align:center">Tome</th><th data-col="name">Nom</th><th data-col="size" style="width:120px;text-align:right">Taille</th><th style="width:360px">Lien</th></tr>';
+    const thead = document.createElement('thead'); thead.innerHTML = '<tr><th style="width:36px"><input type="checkbox" id="ed2k-master" aria-label="Tout sélectionner / désélectionner"></th><th data-col="tome" style="width:60px;text-align:center">Tome</th><th data-col="name">Nom</th><th data-col="size" style="width:120px;text-align:right">Taille</th><th style="width:360px">Lien</th></tr>';
         const tbody = document.createElement('tbody');
 
         // Selection state persists across re-renders and enables Shift+click range selection.
@@ -947,7 +950,7 @@
             filtered.forEach((it, idx) => {
                 const tr = document.createElement('tr');
                 const cbTd = document.createElement('td');
-                const cb = document.createElement('input'); cb.type = 'checkbox'; cb.dataset.link = it.link; cb.className = 'ed2k-row-cb';
+                const cb = document.createElement('input'); cb.type = 'checkbox'; cb.dataset.link = it.link; cb.className = 'ed2k-row-cb'; cb.setAttribute('aria-label', `Sélectionner ${it.name}`);
                 cb.checked = selectedLinks.has(it.link);
                 cb.addEventListener('click', (evt) => {
                     handleCheckboxClick(cb, evt);
@@ -1519,22 +1522,40 @@
     minInput.addEventListener('input', debRender);
     maxInput.addEventListener('input', debRender);
     clearSizeBtn.addEventListener('click', ()=>{ minInput.value=''; maxInput.value=''; debRender(); });
-        // make headers sortable
+        // make headers sortable (mouse and keyboard, with aria-sort kept in sync)
         const ths = thead.querySelectorAll('th');
+        function updateSortAria() {
+            ths.forEach(h => {
+                const col = h.getAttribute('data-col');
+                if (!col) return;
+                h.setAttribute('aria-sort', col === sortState.col ? (sortState.dir === 1 ? 'ascending' : 'descending') : 'none');
+            });
+        }
         ths.forEach(h => {
             const col = h.getAttribute('data-col');
             if (!col) return;
             h.style.cursor = 'pointer';
-            h.addEventListener('click', () => {
+            h.tabIndex = 0;
+            h.setAttribute('role', 'button');
+            const activateSort = () => {
                 if (sortState.col === col) {
                     sortState.dir *= -1;
                 } else {
                     sortState.col = col;
                     sortState.dir = defaultDirFor(col);
                 }
+                updateSortAria();
                 renderRows(search.value);
+            };
+            h.addEventListener('click', activateSort);
+            h.addEventListener('keydown', (evt) => {
+                if (evt.key === 'Enter' || evt.key === ' ' || evt.key === 'Spacebar') {
+                    evt.preventDefault();
+                    activateSort();
+                }
             });
         });
+        updateSortAria();
 
         // handle Escape to close
         function onEsc(e){ if ((e.key === 'Escape' || e.key === 'Esc') && !self.classList.contains('minimized')) { destroy(); } }
