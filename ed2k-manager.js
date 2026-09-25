@@ -27,85 +27,77 @@
     if (window.self !== window.top) return;
 
     // === Configuration ===
+    // The hash comparison list is always persistent (GM storage) and shared across every
+    // site; key names are unchanged from earlier versions so existing lists are not lost.
     const STORAGE_KEY = 'ed2k_revealer_prefs_v1';
-    const HASH_MEMORY_MODE_KEY = 'ed2k_hash_memory_mode_v1';
-    const HASH_SESSION_DATA_KEY = 'ed2k_hash_session_data_v1';
-    const HASH_SESSION_SOURCE_KEY = 'ed2k_hash_session_source_v1';
     const HASH_PERSIST_DATA_KEY = 'ed2k_hash_persist_data_v1';
     const HASH_PERSIST_SOURCE_KEY = 'ed2k_hash_persist_source_v1';
 
     // === Utilities ===
-    function savePrefs(p) { localStorage.setItem(STORAGE_KEY, JSON.stringify(p)); }
-    function loadPrefs() { try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch (e) { return {}; } }
-
-    function loadHashMemoryMode() {
-        try {
-            const mode = String(localStorage.getItem(HASH_MEMORY_MODE_KEY) || 'session').toLowerCase();
-            return mode === 'persistent' ? 'persistent' : 'session';
-        } catch (e) {
-            return 'session';
-        }
+    function gmStorageAvailable() {
+        return typeof GM_getValue === 'function' && typeof GM_setValue === 'function' && typeof GM_deleteValue === 'function';
     }
 
-    function saveHashMemoryMode(mode) {
-        try {
-            localStorage.setItem(HASH_MEMORY_MODE_KEY, mode === 'persistent' ? 'persistent' : 'session');
-        } catch (e) {}
-    }
-
-    function safeSessionGet(key) {
-        try { return String(sessionStorage.getItem(key) || ''); } catch (e) { return ''; }
-    }
-
-    function safeSessionSet(key, value) {
-        try { sessionStorage.setItem(key, String(value || '')); } catch (e) {}
-    }
-
-    function safeSessionDelete(key) {
-        try { sessionStorage.removeItem(key); } catch (e) {}
-    }
-
+    // No fallback to the page's localStorage/sessionStorage: that storage is per-site
+    // and readable by the page's own scripts, defeating the point of a global, private list.
     async function gmGetValueSafe(key, fallbackValue) {
         try {
             if (typeof GM_getValue === 'function') return await GM_getValue(key, fallbackValue);
         } catch (e) {}
-        try {
-            const fallbackKey = `ed2k_gm_fallback_${key}`;
-            const val = localStorage.getItem(fallbackKey);
-            return val === null ? fallbackValue : val;
-        } catch (e) {
-            return fallbackValue;
-        }
+        return fallbackValue;
     }
 
     async function gmSetValueSafe(key, value) {
         try {
             if (typeof GM_setValue === 'function') {
                 await GM_setValue(key, value);
-                return;
+                return true;
             }
         } catch (e) {}
-        try {
-            const fallbackKey = `ed2k_gm_fallback_${key}`;
-            localStorage.setItem(fallbackKey, String(value || ''));
-        } catch (e) {}
+        return false;
     }
 
     async function gmDeleteValueSafe(key) {
         try {
             if (typeof GM_deleteValue === 'function') {
                 await GM_deleteValue(key);
-                return;
+                return true;
             }
         } catch (e) {}
-        try {
-            const fallbackKey = `ed2k_gm_fallback_${key}`;
-            localStorage.removeItem(fallbackKey);
-        } catch (e) {}
+        return false;
     }
 
-    // keep only button visibility in prefs; theme fixed to ocean
-    const prefs = Object.assign({ showButton: true, btnPos: 'bottom-right' }, loadPrefs());
+    // Write then read back to catch silent failures (e.g. storage quota exceeded)
+    // instead of reporting success when nothing was actually saved.
+    async function gmSetValueVerified(key, value) {
+        if (!(await gmSetValueSafe(key, value))) return false;
+        try {
+            return (await gmGetValueSafe(key, undefined)) === value;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    async function loadPrefsFromGm() {
+        if (!gmStorageAvailable()) return {};
+        try {
+            const raw = await gmGetValueSafe(STORAGE_KEY, '');
+            const parsed = raw ? JSON.parse(raw) : null;
+            return (parsed && typeof parsed === 'object') ? parsed : {};
+        } catch (e) {
+            return {};
+        }
+    }
+
+    async function savePrefs() {
+        if (!gmStorageAvailable()) return;
+        try { await gmSetValueSafe(STORAGE_KEY, JSON.stringify(prefs)); } catch (e) {}
+    }
+
+    // keep only button visibility in prefs; theme fixed to ocean.
+    // Defaults apply immediately; the real values are loaded from GM storage
+    // asynchronously (see initPrefsFromStorage) and re-applied once available.
+    const prefs = { showButton: true, btnPos: 'bottom-right' };
 
     // ed2k detection: capture full candidates, then normalize/parse
     const ED2K_PREFIX = 'ed2k://';
@@ -199,45 +191,27 @@
         return extractEd2kHashesFromContent(String(serialized || ''));
     }
 
-    async function loadStoredHashPayload(mode) {
-        if (mode === 'persistent') {
-            const storedData = await gmGetValueSafe(HASH_PERSIST_DATA_KEY, '');
-            const storedSource = await gmGetValueSafe(HASH_PERSIST_SOURCE_KEY, '');
-            return {
-                hashes: deserializeHashSet(storedData),
-                source: String(storedSource || ''),
-            };
-        }
+    async function loadStoredHashPayload() {
+        const storedData = await gmGetValueSafe(HASH_PERSIST_DATA_KEY, '');
+        const storedSource = await gmGetValueSafe(HASH_PERSIST_SOURCE_KEY, '');
         return {
-            hashes: deserializeHashSet(safeSessionGet(HASH_SESSION_DATA_KEY)),
-            source: safeSessionGet(HASH_SESSION_SOURCE_KEY),
+            hashes: deserializeHashSet(storedData),
+            source: String(storedSource || ''),
         };
     }
 
-    async function saveStoredHashPayload(mode, hashSet, sourceName) {
+    // Returns true only if both values were written and verified.
+    async function saveStoredHashPayload(hashSet, sourceName) {
         const serialized = serializeHashSet(hashSet);
         const src = String(sourceName || '');
-        if (mode === 'persistent') {
-            await gmSetValueSafe(HASH_PERSIST_DATA_KEY, serialized);
-            await gmSetValueSafe(HASH_PERSIST_SOURCE_KEY, src);
-            safeSessionDelete(HASH_SESSION_DATA_KEY);
-            safeSessionDelete(HASH_SESSION_SOURCE_KEY);
-            return;
-        }
-        safeSessionSet(HASH_SESSION_DATA_KEY, serialized);
-        safeSessionSet(HASH_SESSION_SOURCE_KEY, src);
-        await gmDeleteValueSafe(HASH_PERSIST_DATA_KEY);
-        await gmDeleteValueSafe(HASH_PERSIST_SOURCE_KEY);
+        const dataOk = await gmSetValueVerified(HASH_PERSIST_DATA_KEY, serialized);
+        const sourceOk = await gmSetValueVerified(HASH_PERSIST_SOURCE_KEY, src);
+        return dataOk && sourceOk;
     }
 
-    async function clearStoredHashPayload(mode) {
-        if (mode === 'persistent') {
-            await gmDeleteValueSafe(HASH_PERSIST_DATA_KEY);
-            await gmDeleteValueSafe(HASH_PERSIST_SOURCE_KEY);
-            return;
-        }
-        safeSessionDelete(HASH_SESSION_DATA_KEY);
-        safeSessionDelete(HASH_SESSION_SOURCE_KEY);
+    async function clearStoredHashPayload() {
+        await gmDeleteValueSafe(HASH_PERSIST_DATA_KEY);
+        await gmDeleteValueSafe(HASH_PERSIST_SOURCE_KEY);
     }
 
     // Read as bytes and decode from the BOM instead of always assuming UTF-8:
@@ -432,13 +406,6 @@
     .ed2k-size-input{padding:6px 8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.02);color:#cfe8f6;width:110px}
     .ed2k-size-row{display:flex;gap:6px;align-items:center}
     .ed2k-hash-status{font-size:11px;color:#bfefff;opacity:0.9;padding:4px 8px;border:1px solid rgba(255,255,255,0.05);border-radius:999px;background:rgba(255,255,255,0.03)}
-    .ed2k-mode-wrap{display:flex;align-items:center;gap:6px;padding:4px 8px;border:1px solid rgba(255,255,255,0.06);border-radius:999px;background:rgba(255,255,255,0.03)}
-    .ed2k-mode-side{font-size:11px;color:#b8e8f6;opacity:0.65;transition:opacity .18s ease,color .18s ease}
-    .ed2k-mode-side.active{opacity:1;color:#e8fdff}
-    .ed2k-mode-switch{position:relative;width:48px;height:24px;border-radius:999px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.08);cursor:pointer;padding:0;display:inline-flex;align-items:center}
-    .ed2k-mode-switch::after{content:'';position:absolute;left:2px;top:2px;width:18px;height:18px;border-radius:50%;background:linear-gradient(180deg,#dff9ff,#8be7ff);box-shadow:0 2px 8px rgba(0,0,0,0.35);transition:transform .18s ease}
-    .ed2k-mode-switch.is-on{background:linear-gradient(90deg,#1dcde6,#5ca2f5)}
-    .ed2k-mode-switch.is-on::after{transform:translateX(24px)}
     .ed2k-actions-wrap{position:relative;display:inline-flex}
     .ed2k-actions-menu{position:absolute;top:calc(100% + 6px);left:0;right:auto;min-width:180px;padding:8px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:rgba(2,17,27,0.96);display:none;flex-direction:column;gap:6px;box-shadow:0 14px 32px rgba(2,6,23,0.5);z-index:30}
     .ed2k-actions-wrap.ed2k-align-right .ed2k-actions-menu{left:auto;right:0}
@@ -517,8 +484,16 @@
     }
 
     // Don't append button yet - wait to see if there are links
-    // apply initial prefs
+    // apply initial (default) prefs immediately, then the real stored ones once loaded
     try { applyButtonPosition(); applyButtonSize(); } catch(e){}
+
+    async function initPrefsFromStorage() {
+        const stored = await loadPrefsFromGm();
+        Object.assign(prefs, stored);
+        try { applyButtonPosition(); applyButtonSize(); } catch (e) {}
+        if (btn.isConnected) btn.style.display = prefs.showButton ? 'flex' : 'none';
+    }
+    initPrefsFromStorage();
 
     // modal
     let modal = null;
@@ -737,12 +712,6 @@
     const exportMenuWrap = document.createElement('div'); exportMenuWrap.className = 'ed2k-actions-wrap ed2k-align-right';
     const exportMenu = document.createElement('div'); exportMenu.className = 'ed2k-actions-menu';
 
-    const memoryModeWrap = document.createElement('div'); memoryModeWrap.className = 'ed2k-mode-wrap';
-    const memoryModeSession = document.createElement('span'); memoryModeSession.className = 'ed2k-mode-side'; memoryModeSession.textContent = 'Session';
-    const memoryModeSwitch = document.createElement('button'); memoryModeSwitch.className = 'ed2k-mode-switch'; memoryModeSwitch.type = 'button'; memoryModeSwitch.setAttribute('aria-label', 'Basculer le mode mémoire');
-    const memoryModePersistent = document.createElement('span'); memoryModePersistent.className = 'ed2k-mode-side'; memoryModePersistent.textContent = 'Persistante';
-    memoryModeWrap.appendChild(memoryModeSession); memoryModeWrap.appendChild(memoryModeSwitch); memoryModeWrap.appendChild(memoryModePersistent);
-
     [selectAllBtn, deselectAllBtn, clearCompareBtn].forEach(btnItem => {
         btnItem.classList.add('ed2k-menu-item');
         selectMenu.appendChild(btnItem);
@@ -763,7 +732,13 @@
 
     let externalHashSet = null;
     let externalHashSource = '';
-        let memoryMode = loadHashMemoryMode();
+    // No persistent import without GM storage: there is no per-session fallback
+    // anymore (the hash list is always persistent), so disable it explicitly.
+    const hashStorageOk = gmStorageAvailable();
+    if (!hashStorageOk) {
+        importHashesBtn.disabled = true;
+        importHashesBtn.title = 'Stockage persistant indisponible (GM_setValue manquant)';
+    }
     const itemByLink = new Map(items.map(it => [it.link, it]));
 
     // size filters UI
@@ -776,7 +751,6 @@
     toolbar.appendChild(search);
     // put size filters next to search
     toolbar.appendChild(sizeRow);
-    toolbar.appendChild(memoryModeWrap);
     toolbar.appendChild(selectMenuWrap);
     toolbar.appendChild(importHashesBtn);
     toolbar.appendChild(selectNewBtn);
@@ -871,26 +845,18 @@
             return !!(externalHashSet && externalHashSet.has(item.hash));
         }
 
-        function updateMemoryModeUi() {
-            const isPersistent = memoryMode === 'persistent';
-            memoryModeSwitch.classList.toggle('is-on', isPersistent);
-            memoryModeSwitch.title = isPersistent
-                ? 'Le fichier de hash reste après redémarrage du navigateur.'
-                : 'Le fichier de hash est gardé pendant la session navigateur.';
-            memoryModeSession.classList.toggle('active', !isPersistent);
-            memoryModePersistent.classList.toggle('active', isPersistent);
-        }
-
+        // No implicit purge: the only action that ever deletes the stored list is
+        // "Effacer comparaison" (with a confirmation). An empty/failed import must
+        // never silently wipe out an existing list.
         async function persistCurrentHashSet() {
-            if (!externalHashSet || !externalHashSet.size) {
-                await clearStoredHashPayload(memoryMode);
-                return;
-            }
-            await saveStoredHashPayload(memoryMode, externalHashSet, externalHashSource);
+            if (!externalHashSet || !externalHashSet.size) return;
+            const ok = await saveStoredHashPayload(externalHashSet, externalHashSource);
+            if (!ok) throw new Error('Erreur de sauvegarde des hash');
         }
 
         async function restoreImportedHashes() {
-            const payload = await loadStoredHashPayload(memoryMode);
+            if (!hashStorageOk) { updateHashStatus(); return; }
+            const payload = await loadStoredHashPayload();
             if (!payload || !payload.hashes || !payload.hashes.size) {
                 externalHashSet = null;
                 externalHashSource = '';
@@ -903,6 +869,12 @@
         }
 
         function updateHashStatus() {
+            if (!hashStorageOk && !externalHashSet) {
+                hashStatus.textContent = 'Stockage persistant indisponible';
+                selectNewBtn.disabled = true;
+                clearCompareBtn.disabled = true;
+                return;
+            }
             if (!externalHashSet) {
                 hashStatus.textContent = 'Comparaison inactive';
                 selectNewBtn.disabled = true;
@@ -1254,23 +1226,6 @@
         };
         document.addEventListener('click', onOutsideMenusClick);
 
-        memoryModeSwitch.addEventListener('click', async () => {
-            try {
-                memoryMode = memoryMode === 'persistent' ? 'session' : 'persistent';
-                saveHashMemoryMode(memoryMode);
-                if (externalHashSet && externalHashSet.size) {
-                    await persistCurrentHashSet();
-                } else {
-                    await clearStoredHashPayload(memoryMode);
-                    await clearStoredHashPayload(memoryMode === 'persistent' ? 'session' : 'persistent');
-                }
-                updateMemoryModeUi();
-                renderRows(search.value);
-            } catch (e) {
-                flashButton(hashStatus, 'Erreur mémoire', updateHashStatus);
-            }
-        });
-
         importHashesBtn.addEventListener('click', () => importHashesInput.click());
 
         importHashesInput.addEventListener('change', async () => {
@@ -1283,23 +1238,31 @@
                 const rawContent = await readFileAsText(file);
                 externalHashSet = await parseHashesWithWorker(rawContent);
                 externalHashSource = file.name;
-                await persistCurrentHashSet();
+                let saveError = false;
+                try {
+                    await persistCurrentHashSet();
+                } catch (e) {
+                    saveError = true;
+                }
                 renderRows(search.value);
                 const importedCount = externalHashSet.size;
-                const importedMsg = importedCount ? `${importedCount} hash importés` : '0 hash importé';
+                const importedMsg = saveError
+                    ? 'Erreur de sauvegarde'
+                    : (importedCount ? `${importedCount} hash importés` : '0 hash importé');
                 flashButton(hashStatus, importedMsg, updateHashStatus);
             } catch (e) {
                 flashButton(hashStatus, 'Erreur import', updateHashStatus);
             } finally {
-                importHashesBtn.disabled = false;
+                importHashesBtn.disabled = !hashStorageOk;
                 importHashesBtn.textContent = 'Charger hash';
             }
         });
 
         clearCompareBtn.addEventListener('click', async () => {
+            if (!confirm('Effacer la liste de hash comparée ? Cette action est irréversible.')) return;
             externalHashSet = null;
             externalHashSource = '';
-            await clearStoredHashPayload(memoryMode);
+            await clearStoredHashPayload();
             renderRows(search.value);
             flashButton(clearCompareBtn, 'Effacé');
         });
@@ -1592,7 +1555,6 @@
         document.addEventListener('keydown', onEsc);
 
         // initial render
-        updateMemoryModeUi();
         updateHashStatus();
         renderRows('');
         restoreImportedHashes();
@@ -1840,7 +1802,7 @@
 
     function toggleButtonVisibility() {
         prefs.showButton = !prefs.showButton;
-        savePrefs(prefs);
+        savePrefs();
         btn.style.display = prefs.showButton ? 'flex' : 'none';
     }
 
@@ -1875,20 +1837,20 @@
         // Position
         const posLabel = document.createElement('div'); posLabel.textContent = 'Position du bouton'; posLabel.style.fontSize='12px'; posLabel.style.color='#cfe8f6'; posLabel.style.marginBottom='6px'; menu.appendChild(posLabel);
         const posRow = document.createElement('div'); posRow.style.display='flex'; posRow.style.gap='6px'; posRow.style.marginBottom='8px';
-        ['top-left','top-right','bottom-left','bottom-right'].forEach(p => { const b = document.createElement('button'); b.className='ed2k-btn'; b.textContent = p.replace('-',' '); b.style.flex='1'; b.addEventListener('click', ()=>{ prefs.btnPos = p; savePrefs(prefs); applyButtonPosition(); menu.remove(); }); posRow.appendChild(b); });
+        ['top-left','top-right','bottom-left','bottom-right'].forEach(p => { const b = document.createElement('button'); b.className='ed2k-btn'; b.textContent = p.replace('-',' '); b.style.flex='1'; b.addEventListener('click', ()=>{ prefs.btnPos = p; savePrefs(); applyButtonPosition(); menu.remove(); }); posRow.appendChild(b); });
         menu.appendChild(posRow);
 
         // Size
         const sizeLabel = document.createElement('div'); sizeLabel.textContent = 'Taille du bouton'; sizeLabel.style.fontSize='12px'; sizeLabel.style.color='#cfe8f6'; sizeLabel.style.marginBottom='6px'; menu.appendChild(sizeLabel);
         const sizeRow = document.createElement('div'); sizeRow.style.display='flex'; sizeRow.style.gap='6px'; sizeRow.style.marginBottom='8px';
-        [['small','S'],['normal','M'],['large','L']].forEach(([k,l])=>{ const b=document.createElement('button'); b.className='ed2k-btn'; b.textContent = l; b.style.flex='1'; b.addEventListener('click', ()=>{ prefs.btnSize = k; savePrefs(prefs); applyButtonSize(); menu.remove(); }); sizeRow.appendChild(b); });
+        [['small','S'],['normal','M'],['large','L']].forEach(([k,l])=>{ const b=document.createElement('button'); b.className='ed2k-btn'; b.textContent = l; b.style.flex='1'; b.addEventListener('click', ()=>{ prefs.btnSize = k; savePrefs(); applyButtonSize(); menu.remove(); }); sizeRow.appendChild(b); });
         menu.appendChild(sizeRow);
 
         // Show/hide
-        const toggle = document.createElement('button'); toggle.className='ed2k-btn'; toggle.textContent = prefs.showButton ? 'Masquer bouton' : 'Afficher bouton'; toggle.style.width='100%'; toggle.style.marginBottom='8px'; toggle.addEventListener('click', ()=>{ prefs.showButton = !prefs.showButton; savePrefs(prefs); btn.style.display = prefs.showButton ? 'flex' : 'none'; menu.remove(); }); menu.appendChild(toggle);
+        const toggle = document.createElement('button'); toggle.className='ed2k-btn'; toggle.textContent = prefs.showButton ? 'Masquer bouton' : 'Afficher bouton'; toggle.style.width='100%'; toggle.style.marginBottom='8px'; toggle.addEventListener('click', ()=>{ prefs.showButton = !prefs.showButton; savePrefs(); btn.style.display = prefs.showButton ? 'flex' : 'none'; menu.remove(); }); menu.appendChild(toggle);
 
         // Reset defaults
-        const reset = document.createElement('button'); reset.className='ed2k-btn'; reset.textContent='Réinitialiser'; reset.style.width='100%'; reset.addEventListener('click', ()=>{ prefs.btnPos='bottom-right'; prefs.btnSize='normal'; prefs.showButton=true; savePrefs(prefs); applyButtonPosition(); applyButtonSize(); btn.style.display='flex'; menu.remove(); }); menu.appendChild(reset);
+        const reset = document.createElement('button'); reset.className='ed2k-btn'; reset.textContent='Réinitialiser'; reset.style.width='100%'; reset.addEventListener('click', ()=>{ prefs.btnPos='bottom-right'; prefs.btnSize='normal'; prefs.showButton=true; savePrefs(); applyButtonPosition(); applyButtonSize(); btn.style.display='flex'; menu.remove(); }); menu.appendChild(reset);
 
         document.body.appendChild(menu);
         const rm = () => { try{ menu.remove(); }catch(e){} };
