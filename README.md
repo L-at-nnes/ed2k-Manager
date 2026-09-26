@@ -6,7 +6,7 @@
 [![Auto-update](https://img.shields.io/badge/auto--update-enabled-brightgreen.svg)](https://github.com/L-at-nnes/ed2k-Manager/blob/main/ed2k-manager.js)
 
 ## Overview
-ed2k Manager is a lightweight userscript for Tampermonkey or Violentmonkey that scans any web page for `ed2k://` links and presents them in a floating control panel. Detection is robust (including percent-encoded ed2k links), and tome extraction is now much more capable: it recognizes explicit markers (`T01`, `Tome 39`, `HS2`), implicit layouts (`- 01 -`, `.02.`, `02 (sur 3)`), and special editions like integrales and packs. From there you can search, filter by size, select items, copy the exact list of links, or export the results for later use. The script runs entirely inside the browser, stores preferences locally, and keeps itself up to date.
+ed2k Manager is a lightweight userscript for Tampermonkey or Violentmonkey that scans any web page for `ed2k://` links and presents them in a floating control panel. Detection is robust (including percent-encoded ed2k links), and tome extraction is now much more capable: it recognizes explicit markers (`T01`, `Tome 39`, `HS2`, `Chapitre 12.5`), implicit layouts (`- 01 -`, `.02.`, `02 (sur 3)`), and special editions like integrales and range packs (`Tomes 1 a 5`, `T01-T05`). From there you can search, filter by size, select items, copy the exact list of links, or export the results for later use. The script runs entirely inside the browser, stores preferences and the imported hash list through Tampermonkey's own storage (shared across every site, never the page's own `localStorage`), and keeps itself up to date.
 
 ## Features at a Glance
 - Robust detection of ed2k links on the active page, including percent-encoded links such as `ed2k://%7Cfile%7C...`, with a badge that shows the number of matches.
@@ -14,14 +14,15 @@ ed2k Manager is a lightweight userscript for Tampermonkey or Violentmonkey that 
 - Tome extraction handles explicit markers (including Volume 0, Chapter 0, HS, numbered volumes), implicit numbering patterns, and special editions like integrales (`INT`) and range packs (`PACK`).
 - Click on a file name to toggle its checkbox and copy its ed2k link immediately.
 - Clean modal interface with bulk selection, Shift+click range selection, regex search, and min/max size filters that accept human friendly values (`10MB`, `2GB`, etc.).
-- Import hash lists from external files (`.csv`, `.json`, `.txt`, etc.) to compare against the current page, display known/new counts, and select only new links in one click.
-- Memory mode switch for imported hashes: `session` mode (default) keeps hashes for the current browser session, while `persistent` mode keeps them across browser restarts until you clear or replace them.
+- Import hash lists from external files (`.csv`, `.json`, `.txt`, etc., UTF-8 or UTF-16) to compare against the current page, display known/new counts, and select only new links in one click.
+- The imported hash list is always saved through Tampermonkey storage and shared across every site; it is only ever deleted by the explicit `Effacer comparaison` button, which asks for confirmation first.
 - Large import handling is optimized with background parsing so files containing 10k+ hashes remain smooth to load.
-- Cleaner top toolbar with clear priorities: `Sélectionner` dropdown for bulk selection helpers, direct `Copier` + `Tout copier` buttons, and an `Exporter` dropdown for CSV and `.emulecollection`.
+- Cleaner top toolbar with clear priorities: `Sélectionner` dropdown for bulk selection helpers, direct `Copier` + `Tout copier (N)` buttons (the count and both actions follow your current filter/search), and an `Exporter` dropdown for CSV and `.emulecollection`.
+- Search by name (plain text or `/regex/flags`), or prefix your query with `hash:` to search by ed2k hash instead.
 - A live selection counter in the header so you always see how many links are checked.
-- Copy helpers for the checked links or for the whole list, plus exports to CSV (`name,size,link`) and `.emulecollection` (exports use the selection when it exists, otherwise the full list).
-- Automatic decoding of encoded filenames along with readable size displays (bytes are shown in the tooltip for accuracy).
-- Context menu (right click the launcher button) to reposition or resize the button and reset preferences.
+- Copy helpers for the checked links or for the currently filtered list, plus exports to CSV (`name,size,link`, UTF-8 with BOM, safe against spreadsheet formula injection) and `.emulecollection` (exports use the selection when it exists, otherwise the filtered list; you're warned before anything over 1024 links gets truncated).
+- Automatic decoding of encoded filenames (with a Latin-1 fallback for the rare non-UTF-8 name) and readable size displays in B/KB/MB/GB/TB, with exact bytes in the tooltip; size filters accept `10MB`, `2GB`, `10Mo`, `1.5GiB`, etc.
+- Context menu (right click the launcher button) to reposition or resize the button and reset preferences; Tampermonkey menu commands let you reopen the panel or toggle the button's visibility even when it's hidden.
 - Fully documented codebase in English so outside contributors can understand the logic quickly.
 
 ## Requirements
@@ -51,25 +52,24 @@ Tampermonkey automatically checks GitHub for new releases, so you do not need to
 2. Review the list of detected links in the modal window. The badge reflects the total number of links, the header shows how many are selected, and the Tome column is used by default for sorting.
 3. Type text or a regex such as `/S01E02/i` in the search bar to narrow the list. Use **Min/Max** inputs to filter by size.
 4. Use **Sélectionner** (dropdown) for bulk actions such as select all / deselect all.
-5. Set **Mémoire: session/persistante** according to your workflow (temporary cache for this browser session, or persistent cache across restarts).
-6. If you keep an inventory file of existing hashes, click **Charger hash** and load your file (`.csv`, `.json`, `.txt`, etc.). The panel shows known/new counts and marks each row as already owned or new.
-7. Click **Nouveaux** to check only links whose hash is not present in the imported file.
-8. Select individual rows manually, use **Shift+click** to select a range, or click directly on a file name to toggle selection and copy that single link.
-9. Use **Copier** for the current selection and **Tout copier** for every link.
-10. Open **Exporter** (dropdown) to export as `ed2k-links.csv` or `.emulecollection` (exports use the selection when it exists, otherwise the full list).
-11. Close the window by clicking **Close**, pressing **Esc**, or toggling the launcher button again.
+5. If you keep an inventory file of existing hashes, click **Charger hash** and load your file (`.csv`, `.json`, `.txt`, etc.). The panel shows known/new counts and marks each row as already owned or new; the list is saved automatically and stays available on every site until you click **Effacer comparaison** (which asks for confirmation).
+6. Click **Nouveaux** to check only links whose hash is not present in the imported file.
+7. Select individual rows manually, use **Shift+click** to select a range, or click directly on a file name to toggle selection and copy that single link.
+8. Use **Copier** for the current selection and **Tout copier (N)** for every link currently shown by your filter/search.
+9. Open **Exporter** (dropdown) to export as `ed2k-links.csv` or `.emulecollection` (exports use the selection when it exists, otherwise the filtered list).
+10. Close the window by clicking **Fermer**, pressing **Esc**, or toggling the launcher button again — copying links no longer closes the window, so you can keep working with your selection afterward.
 
 ## Automatic Updates
 The script is served directly from GitHub. Tampermonkey checks the canonical URL on a schedule and replaces the local copy whenever a new version is published. As long as the userscript is enabled, you will silently receive the latest UI tweaks and bug fixes.
 
 ## Troubleshooting
-- **Button does not show:** Confirm the script is enabled in Tampermonkey and reload the page. Some sites require a hard refresh (Ctrl+F5).
+- **Button does not show:** Confirm the script is enabled in Tampermonkey and reload the page. Some sites require a hard refresh (Ctrl+F5). If you previously hid the button, use the Tampermonkey menu command **Afficher/masquer le bouton** (or **Ouvrir ed2k Manager**) from the extension's icon menu to bring it back.
 - **Clipboard copy fails:** Refresh the tab; a few browsers restrict clipboard access until the page gains focus after installing a script.
-- **Imported file shows `0 hash`:** Ensure the file really contains ED2K-style hashes (32 hexadecimal characters). The parser scans raw content and extracts every matching hash token.
-- **Layout issues on very long lists:** See the TODO-LIST section at the end of this README for planned performance and UI improvements.
+- **Imported file shows `0 hash`:** Ensure the file really contains ED2K-style hashes (32 hexadecimal characters). The parser scans raw content (UTF-8 or UTF-16) and extracts every matching hash token.
+- **"Stockage persistant indisponible" in the hash status:** Tampermonkey's `GM_setValue`/`GM_getValue` are unavailable in your userscript manager; the hash-comparison feature needs them and is disabled until they're available.
 
 ## Roadmap and Community
-The roadmap is summarized in the TODO-LIST section at the end of this README. Feel free to open an issue to discuss ideas or report bugs, and every suggestion helps shape the next milestone.
+Planned next steps: a "new items only" filter with hash-based deduplication, detecting links inside `<input>`/`<textarea>` fields and shadow DOM, regex-based renaming with a before/after preview, an FR/EN language toggle, virtualized rendering for very large lists (10k+ links), and multi-file hash import with merging. Feel free to open an issue to discuss ideas or report bugs, and every suggestion helps shape the next milestone.
 
 ## Contributing
 Pull requests are welcome for bug fixes, enhancements, documentation, or translation improvements. The code comments and docstrings are written in English. If you add UI strings, please keep them easy to translate, and include screenshots or short clips when proposing interface changes.
