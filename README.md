@@ -9,7 +9,7 @@
 ed2k Manager is a lightweight userscript for Tampermonkey or Violentmonkey that scans any web page for `ed2k://` links and presents them in a floating control panel. Detection is robust (including percent-encoded ed2k links), and tome extraction is now much more capable: it recognizes explicit markers (`T01`, `Tome 39`, `HS2`, `Chapitre 12.5`), implicit layouts (`- 01 -`, `.02.`, `02 (sur 3)`), and special editions like integrales and range packs (`Tomes 1 a 5`, `T01-T05`). From there you can search, filter by size, select items, copy the exact list of links, or export the results for later use. The script runs entirely inside the browser, stores preferences and the imported hash list through Tampermonkey's own storage (shared across every site, never the page's own `localStorage`), and keeps itself up to date.
 
 ## Features at a Glance
-- Robust detection of ed2k links on the active page, including percent-encoded links such as `ed2k://%7Cfile%7C...`, with a badge that shows the number of matches.
+- Robust detection of ed2k links on the active page, including percent-encoded links such as `ed2k://%7Cfile%7C...`, links pasted into a `<textarea>`/text `<input>`, links inside an open shadow DOM (web components, recursively), and links split across an inline tag (e.g. `ed2k://|file|<b>Name</b>|123|hash|/`); a badge shows the total number of matches.
 - Advanced tome/volume/chapter extraction with a dedicated column and a default sort that brings the highest tome to the top while keeping unknown tomes at the end.
 - Tome extraction handles explicit markers (including Volume 0, Chapter 0, HS, numbered volumes), implicit numbering patterns, and special editions like integrales (`INT`) and range packs (`PACK`).
 - Click on a file name to toggle its checkbox and copy its ed2k link immediately.
@@ -71,7 +71,7 @@ The script is served directly from GitHub. Tampermonkey checks the canonical URL
 - **"Stockage persistant indisponible" in the hash status:** Tampermonkey's `GM_setValue`/`GM_getValue` are unavailable in your userscript manager; the hash-comparison feature needs them and is disabled until they're available.
 
 ## Roadmap and Community
-Planned next steps: a "new items only" filter with hash-based deduplication, detecting links inside `<input>`/`<textarea>` fields and shadow DOM, regex-based renaming with a before/after preview, an FR/EN language toggle, virtualized rendering for very large lists (10k+ links), and multi-file hash import with merging. Feel free to open an issue to discuss ideas or report bugs, and every suggestion helps shape the next milestone.
+Planned next steps: regex-based renaming with a before/after preview, an FR/EN language toggle, and multi-file hash import with merging. Feel free to open an issue to discuss ideas or report bugs, and every suggestion helps shape the next milestone.
 
 ## Contributing
 Pull requests are welcome for bug fixes, enhancements, documentation, or translation improvements. The code comments and docstrings are written in English. If you add UI strings, please keep them easy to translate, and include screenshots or short clips when proposing interface changes.
