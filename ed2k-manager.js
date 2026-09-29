@@ -109,14 +109,37 @@
     const ED2K_CANDIDATE_REGEX = /ed2k:\/\/[^\s<>"']+/gi;
     const ED2K_HASH_REGEX = /\b[a-fA-F0-9]{32}\b/g;
 
+    function bytesFromPercentEncoded(str) {
+        const bytes = [];
+        const chars = Array.from(String(str || ''));
+        for (let i = 0; i < chars.length; i += 1) {
+            const ch = chars[i];
+            if (ch === '%' && /^[0-9a-fA-F]$/.test(chars[i + 1] || '') && /^[0-9a-fA-F]$/.test(chars[i + 2] || '')) {
+                bytes.push(parseInt(chars[i + 1] + chars[i + 2], 16));
+                i += 2;
+                continue;
+            }
+            const encoded = new TextEncoder().encode(ch);
+            for (let j = 0; j < encoded.length; j += 1) bytes.push(encoded[j]);
+        }
+        return new Uint8Array(bytes);
+    }
+
+    // Decode a possibly percent-encoded file name. Names are usually UTF-8, but
+    // some sites emit raw Latin-1 bytes (e.g. "Caf%E9"), which is not valid UTF-8
+    // and would otherwise throw and fall back to the undecoded, unreadable text.
     function decodeFileName(raw) {
+        const s = String(raw || '').replace(/\+/g, ' ');
         try {
-            // some names are URL-encoded
-            let s = raw.replace(/\+/g, ' ');
-            s = decodeURIComponent(s);
-            s = s.replace(/\s+/g, ' ').trim();
-            return s;
-        } catch (e) { return raw; }
+            const bytes = bytesFromPercentEncoded(s);
+            try {
+                return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+            } catch (e) {
+                return new TextDecoder('windows-1252').decode(bytes);
+            }
+        } catch (e) {
+            try { return decodeURIComponent(s); } catch (e2) { return raw; }
+        }
     }
 
     function safeDecodeURIComponent(value) {
@@ -294,10 +317,15 @@
         const normalizedLink = withSlash.replace(/^ed2k:\/\//i, ED2K_PREFIX);
         const match = normalizedLink.match(ED2K_BASE_REGEX);
         if (!match) return null;
-        const name = decodeFileName(match[1]);
+        // rawName keeps the exact decoded text (including any odd whitespace) so
+        // renaming can rebuild the link without silently altering untouched parts;
+        // name is the whitespace-normalized version used for display/search/sort.
+        const rawName = decodeFileName(match[1]);
+        const name = rawName.replace(/\s+/g, ' ').trim();
         const tomeInfo = extractTomeNumber(name);
         return {
             name,
+            rawName,
             link: normalizedLink,
             size: match[2],
             hash: String(match[3] || '').toLowerCase(),
@@ -996,7 +1024,7 @@
 
         function countRenameTargets(sourceItems, findText) {
             if (!findText) return 0;
-            return sourceItems.reduce((count, it) => count + (String(it.name || '').includes(findText) ? 1 : 0), 0);
+            return sourceItems.reduce((count, it) => count + (String(it.rawName || it.name || '').includes(findText) ? 1 : 0), 0);
         }
 
         function updateRenameStatus() {
@@ -1016,6 +1044,7 @@
             return {
                 item,
                 name: item.name,
+                rawName: item.rawName,
                 link: item.link,
                 tomeDisplay: item.tomeDisplay,
                 tomeSortValue: item.tomeSortValue,
@@ -1023,13 +1052,15 @@
             };
         }
 
-        function updateItemAfterRename(item, newName) {
-            const newLink = replaceEd2kFileName(item.link, newName);
+        function updateItemAfterRename(item, newRawName) {
+            const newLink = replaceEd2kFileName(item.link, newRawName);
             if (!newLink || newLink === item.link) return false;
             const oldLink = item.link;
             const wasSelected = selectedLinks.has(oldLink);
+            const newName = String(newRawName).replace(/\s+/g, ' ').trim();
             const tomeInfo = extractTomeNumber(newName);
             item.name = newName;
+            item.rawName = newRawName;
             item.link = newLink;
             item.tomeDisplay = tomeInfo.display;
             item.tomeSortValue = tomeInfo.sortValue;
@@ -1049,11 +1080,11 @@
             let changed = 0;
             const historyEntry = [];
             sourceItems.forEach(it => {
-                const oldName = String(it.name || '');
-                if (!oldName.includes(findText)) return;
-                const newName = oldName.split(findText).join(replaceText);
+                const oldRawName = String(it.rawName || it.name || '');
+                if (!oldRawName.includes(findText)) return;
+                const newRawName = oldRawName.split(findText).join(replaceText);
                 const before = snapshotItem(it);
-                if (updateItemAfterRename(it, newName)) {
+                if (updateItemAfterRename(it, newRawName)) {
                     historyEntry.push(before);
                     changed += 1;
                 }
@@ -1079,6 +1110,7 @@
                 itemByLink.delete(snapshot.item.link);
                 selectedLinks.delete(snapshot.item.link);
                 snapshot.item.name = snapshot.name;
+                snapshot.item.rawName = snapshot.rawName;
                 snapshot.item.link = snapshot.link;
                 snapshot.item.tomeDisplay = snapshot.tomeDisplay;
                 snapshot.item.tomeSortValue = snapshot.tomeSortValue;
