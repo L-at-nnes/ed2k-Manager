@@ -927,18 +927,6 @@
             }
         }
 
-        function syncSelectedFromVisible() {
-            getVisibleCheckboxes().forEach(cb => {
-                const link = cb.dataset.link;
-                if (!link) return;
-                if (cb.checked) {
-                    selectedLinks.add(link);
-                } else {
-                    selectedLinks.delete(link);
-                }
-            });
-        }
-
         function setAllVisible(checked) {
             getVisibleCheckboxes().forEach(cb => setCheckedAndTrack(cb, checked));
             updateMasterCheckbox();
@@ -977,8 +965,9 @@
         }
 
         function renderRows(query) {
-            // Persist any manual checkbox changes before rebuilding the table.
-            syncSelectedFromVisible();
+            // Selection changes are already tracked live by the checkbox click/change
+            // listeners (setCheckedAndTrack), so no re-sync is needed here; doing one
+            // from the still-stale DOM used to resurrect old links after a rename.
             tbody.innerHTML = '';
             const frag = document.createDocumentFragment();
             const filtered = getFilteredItems(query);
