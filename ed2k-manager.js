@@ -405,6 +405,10 @@
     .ed2k-rev-search{padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.02);color:#cfe8f6;min-width:260px}
     .ed2k-size-input{padding:6px 8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.02);color:#cfe8f6;width:110px}
     .ed2k-size-row{display:flex;gap:6px;align-items:center}
+    .ed2k-filter-options{display:flex;gap:12px;align-items:center}
+    .ed2k-filter-toggle{display:flex;align-items:center;gap:5px;font-size:12px;color:#cfe8f6;cursor:pointer;user-select:none}
+    .ed2k-filter-toggle input[disabled]{cursor:not-allowed}
+    .ed2k-filter-toggle:has(input[disabled]){opacity:0.5;cursor:not-allowed}
     .ed2k-hash-status{font-size:11px;color:#bfefff;opacity:0.9;padding:4px 8px;border:1px solid rgba(255,255,255,0.05);border-radius:999px;background:rgba(255,255,255,0.03)}
     .ed2k-actions-wrap{position:relative;display:inline-flex}
     .ed2k-actions-menu{position:absolute;top:calc(100% + 6px);left:0;right:auto;min-width:180px;padding:8px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:rgba(2,17,27,0.96);display:none;flex-direction:column;gap:6px;box-shadow:0 14px 32px rgba(2,6,23,0.5);z-index:30}
@@ -750,9 +754,27 @@
     const clearSizeBtn = document.createElement('button'); clearSizeBtn.className = 'ed2k-btn'; clearSizeBtn.textContent = 'Effacer taille';
     sizeRow.appendChild(minInput); sizeRow.appendChild(maxInput); sizeRow.appendChild(clearSizeBtn);
 
+    // extra filter toggles: new-only (needs an imported hash list) and hash dedup
+    const filterOptionsRow = document.createElement('div'); filterOptionsRow.className = 'ed2k-filter-options';
+    const newOnlyLabel = document.createElement('label'); newOnlyLabel.className = 'ed2k-filter-toggle';
+    const newOnlyCheckbox = document.createElement('input'); newOnlyCheckbox.type = 'checkbox'; newOnlyCheckbox.disabled = true;
+    newOnlyLabel.title = 'Ne montrer que les liens absents de la liste de hash importée';
+    newOnlyLabel.appendChild(newOnlyCheckbox);
+    newOnlyLabel.appendChild(document.createTextNode(' Nouveaux seulement'));
+
+    const dedupLabel = document.createElement('label'); dedupLabel.className = 'ed2k-filter-toggle';
+    const dedupCheckbox = document.createElement('input'); dedupCheckbox.type = 'checkbox';
+    dedupLabel.title = 'Ne garder que la première occurrence de chaque hash (fichiers dupliqués sur la page)';
+    dedupLabel.appendChild(dedupCheckbox);
+    dedupLabel.appendChild(document.createTextNode(' Dédupliquer (hash)'));
+
+    filterOptionsRow.appendChild(newOnlyLabel);
+    filterOptionsRow.appendChild(dedupLabel);
+
     toolbar.appendChild(search);
     // put size filters next to search
     toolbar.appendChild(sizeRow);
+    toolbar.appendChild(filterOptionsRow);
     toolbar.appendChild(selectMenuWrap);
     toolbar.appendChild(importHashesBtn);
     toolbar.appendChild(selectNewBtn);
@@ -812,13 +834,23 @@
             markSizeInputValidity(maxInput);
             const minBytes = parseSize(minInput.value);
             const maxBytes = parseSize(maxInput.value);
-            const filtered = items.filter(it => {
+            const newOnly = newOnlyCheckbox.checked && !!externalHashSet;
+            let filtered = items.filter(it => {
                 if (!filterFn(it)) return false;
                 const sizeNum = parseInt(it.size || 0, 10) || 0;
                 if (minBytes != null && sizeNum < minBytes) return false;
                 if (maxBytes != null && sizeNum > maxBytes) return false;
+                if (newOnly && hasImportedHash(it)) return false;
                 return true;
             }).slice();
+            if (dedupCheckbox.checked) {
+                const seenHashes = new Set();
+                filtered = filtered.filter(it => {
+                    if (seenHashes.has(it.hash)) return false;
+                    seenHashes.add(it.hash);
+                    return true;
+                });
+            }
             filtered.sort((a, b) => {
                 if (sortState.col === 'tome') {
                     const aMissing = !Number.isFinite(a.tomeSortValue);
@@ -875,12 +907,16 @@
                 hashStatus.textContent = 'Stockage persistant indisponible';
                 selectNewBtn.disabled = true;
                 clearCompareBtn.disabled = true;
+                newOnlyCheckbox.disabled = true;
+                if (newOnlyCheckbox.checked) { newOnlyCheckbox.checked = false; currentPage = 0; }
                 return;
             }
             if (!externalHashSet) {
                 hashStatus.textContent = 'Comparaison inactive';
                 selectNewBtn.disabled = true;
                 clearCompareBtn.disabled = true;
+                newOnlyCheckbox.disabled = true;
+                if (newOnlyCheckbox.checked) { newOnlyCheckbox.checked = false; currentPage = 0; }
                 return;
             }
             const knownCount = items.reduce((acc, it) => acc + (hasImportedHash(it) ? 1 : 0), 0);
@@ -889,6 +925,7 @@
             hashStatus.textContent = `${knownCount} connus • ${newCount} nouveaux${source}`;
             selectNewBtn.disabled = false;
             clearCompareBtn.disabled = false;
+            newOnlyCheckbox.disabled = false;
         }
 
         function setCheckedAndTrack(cb, checked) {
@@ -1552,6 +1589,8 @@
     minInput.addEventListener('input', debRender);
     maxInput.addEventListener('input', debRender);
     clearSizeBtn.addEventListener('click', ()=>{ minInput.value=''; maxInput.value=''; currentPage = 0; debRender(); });
+    newOnlyCheckbox.addEventListener('change', () => { currentPage = 0; renderRows(search.value); });
+    dedupCheckbox.addEventListener('change', () => { currentPage = 0; renderRows(search.value); });
         // make headers sortable (mouse and keyboard, with aria-sort kept in sync)
         const ths = thead.querySelectorAll('th');
         function updateSortAria() {
