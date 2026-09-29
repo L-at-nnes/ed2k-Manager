@@ -502,7 +502,6 @@
 
     // modal
     let modal = null;
-    let buttonAppended = false;
 
     function minimizeModal() {
         if (!modal || !document.body.contains(modal)) return;
@@ -1794,7 +1793,7 @@
             
             // If no links found and button not yet appended, don't show button
             if (!items || items.length === 0) {
-                if (buttonAppended) {
+                if (btn.isConnected) {
                     // Button was visible, hide badge
                     let badge = btn.querySelector('.ed2k-badge');
                     if (badge) badge.style.display = 'none';
@@ -1802,11 +1801,11 @@
                 // Don't append button if no links
                 return;
             }
-            
-            // Links found: append button if not already done
-            if (!buttonAppended && document.body) {
+
+            // Links found: (re)append the button if the page detached it (e.g. an SPA
+            // replacing document.body), instead of relying on a flag that goes stale.
+            if (!btn.isConnected && document.body) {
                 document.body.appendChild(btn);
-                buttonAppended = true;
                 btn.style.display = prefs.showButton ? 'flex' : 'none';
             }
             
