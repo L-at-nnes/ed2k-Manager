@@ -94,10 +94,10 @@
         try { await gmSetValueSafe(STORAGE_KEY, JSON.stringify(prefs)); } catch (e) {}
     }
 
-    // keep only button visibility in prefs; theme fixed to ocean.
+    // keep only button visibility + hash memory mode in prefs; theme fixed to ocean.
     // Defaults apply immediately; the real values are loaded from GM storage
     // asynchronously (see initPrefsFromStorage) and re-applied once available.
-    const prefs = { showButton: true, btnPos: 'bottom-right' };
+    const prefs = { showButton: true, btnPos: 'bottom-right', hashMemoryMode: 'persistent' };
 
     // ed2k detection: capture full candidates, then normalize/parse
     const ED2K_PREFIX = 'ed2k://';
@@ -467,6 +467,14 @@
     .ed2k-filter-toggle input[disabled]{cursor:not-allowed}
     .ed2k-filter-toggle:has(input[disabled]){opacity:0.5;cursor:not-allowed}
     .ed2k-hash-status{font-size:11px;color:#bfefff;opacity:0.9;padding:4px 8px;border:1px solid rgba(255,255,255,0.05);border-radius:999px;background:rgba(255,255,255,0.03)}
+    .ed2k-mode-wrap{display:flex;align-items:center;gap:6px;padding:4px 8px;border:1px solid rgba(255,255,255,0.06);border-radius:999px;background:rgba(255,255,255,0.03)}
+    .ed2k-mode-side{font-size:11px;color:#b8e8f6;opacity:0.65;transition:opacity .18s ease,color .18s ease}
+    .ed2k-mode-side.active{opacity:1;color:#e8fdff}
+    .ed2k-mode-switch{position:relative;width:48px;height:24px;border-radius:999px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.08);cursor:pointer;padding:0;display:inline-flex;align-items:center}
+    .ed2k-mode-switch:disabled{opacity:0.45;cursor:not-allowed}
+    .ed2k-mode-switch::after{content:'';position:absolute;left:2px;top:2px;width:18px;height:18px;border-radius:50%;background:linear-gradient(180deg,#dff9ff,#8be7ff);box-shadow:0 2px 8px rgba(0,0,0,0.35);transition:transform .18s ease}
+    .ed2k-mode-switch.is-on{background:linear-gradient(90deg,#1dcde6,#5ca2f5)}
+    .ed2k-mode-switch.is-on::after{transform:translateX(24px)}
     .ed2k-actions-wrap{position:relative;display:inline-flex}
     .ed2k-actions-menu{position:absolute;top:calc(100% + 6px);left:0;right:auto;min-width:180px;padding:8px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:rgba(2,17,27,0.96);display:none;flex-direction:column;gap:6px;box-shadow:0 14px 32px rgba(2,6,23,0.5);z-index:30}
     .ed2k-actions-wrap.ed2k-align-right .ed2k-actions-menu{left:auto;right:0}
@@ -491,6 +499,7 @@
     table.ed2k-table{width:100%;border-collapse:collapse;font-size:13px;color:#cfe8f6}
     table.ed2k-table th, table.ed2k-table td{padding:10px 8px;border-bottom:1px dashed rgba(255,255,255,0.03);}
     table.ed2k-table th{color:#9aa4b2;text-align:left;font-size:12px}
+    table.ed2k-table input[type="checkbox"]{width:15px;height:15px;margin:0;accent-color:#2ad0e6;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.25);border-radius:4px;cursor:pointer}
     .ed2k-row-name{color:#e6eef8;font-weight:600}
     .ed2k-controls{display:flex;gap:8px}
     .ed2k-btn{padding:6px 10px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04);color:#cfe8f6;cursor:pointer}
@@ -804,14 +813,21 @@
 
     let externalHashSet = null;
     let externalHashSource = '';
-    // No persistent import without GM storage: there is no per-session fallback
-    // anymore (the hash list is always persistent), so disable it explicitly.
+    // Import/compare always works from memory alone; only "Persistante" mode needs
+    // GM storage. Without it, force "Session" and disable switching away from it.
     const hashStorageOk = gmStorageAvailable();
-    if (!hashStorageOk) {
-        importHashesBtn.disabled = true;
-        importHashesBtn.title = 'Stockage persistant indisponible (GM_setValue manquant)';
-    }
+    let memoryMode = hashStorageOk ? (prefs.hashMemoryMode === 'session' ? 'session' : 'persistent') : 'session';
     const itemByLink = new Map(items.map(it => [it.link, it]));
+
+    const memoryModeWrap = document.createElement('div'); memoryModeWrap.className = 'ed2k-mode-wrap';
+    const memoryModeSession = document.createElement('span'); memoryModeSession.className = 'ed2k-mode-side'; memoryModeSession.textContent = 'Session';
+    const memoryModeSwitch = document.createElement('button'); memoryModeSwitch.className = 'ed2k-mode-switch'; memoryModeSwitch.type = 'button'; memoryModeSwitch.setAttribute('aria-label', 'Basculer le mode mémoire');
+    const memoryModePersistent = document.createElement('span'); memoryModePersistent.className = 'ed2k-mode-side'; memoryModePersistent.textContent = 'Persistante';
+    memoryModeWrap.appendChild(memoryModeSession); memoryModeWrap.appendChild(memoryModeSwitch); memoryModeWrap.appendChild(memoryModePersistent);
+    if (!hashStorageOk) {
+        memoryModeSwitch.disabled = true;
+        memoryModeSwitch.title = 'Stockage persistant indisponible (GM_setValue manquant) : mode Session uniquement';
+    }
 
     // size filters UI
     const sizeRow = document.createElement('div'); sizeRow.className = 'ed2k-size-row';
@@ -841,6 +857,7 @@
     // put size filters next to search
     toolbar.appendChild(sizeRow);
     toolbar.appendChild(filterOptionsRow);
+    toolbar.appendChild(memoryModeWrap);
     toolbar.appendChild(selectMenuWrap);
     toolbar.appendChild(importHashesBtn);
     toolbar.appendChild(selectNewBtn);
@@ -961,17 +978,31 @@
             return !!(externalHashSet && externalHashSet.has(item.hash));
         }
 
-        // No implicit purge: the only action that ever deletes the stored list is
-        // "Effacer comparaison" (with a confirmation). An empty/failed import must
-        // never silently wipe out an existing list.
+        // "Persistante" saves to/restores from GM storage; "Session" keeps the
+        // comparison in memory only (this modal instance), touching no storage at
+        // all. Switching modes never deletes anything by itself — only "Effacer
+        // comparaison" does (with a confirmation), and only for the active mode.
+        function updateMemoryModeUi() {
+            const isPersistent = memoryMode === 'persistent';
+            memoryModeSwitch.classList.toggle('is-on', isPersistent);
+            if (hashStorageOk) {
+                memoryModeSwitch.title = isPersistent
+                    ? 'Le fichier de hash est sauvegardé et partagé entre tous les sites.'
+                    : 'Le fichier de hash reste en mémoire tant que cette fenêtre existe ; il n\'est jamais écrit sur le disque.';
+            }
+            memoryModeSession.classList.toggle('active', !isPersistent);
+            memoryModePersistent.classList.toggle('active', isPersistent);
+        }
+
         async function persistCurrentHashSet() {
+            if (memoryMode !== 'persistent') return;
             if (!externalHashSet || !externalHashSet.size) return;
             const ok = await saveStoredHashPayload(externalHashSet, externalHashSource);
             if (!ok) throw new Error('Erreur de sauvegarde des hash');
         }
 
         async function restoreImportedHashes() {
-            if (!hashStorageOk) { updateHashStatus(); return; }
+            if (memoryMode !== 'persistent') { updateHashStatus(); return; }
             const payload = await loadStoredHashPayload();
             if (!payload || !payload.hashes || !payload.hashes.size) {
                 externalHashSet = null;
@@ -985,15 +1016,6 @@
         }
 
         function updateHashStatus() {
-            if (!hashStorageOk && !externalHashSet) {
-                hashStatus.textContent = 'Stockage persistant indisponible';
-                selectNewBtn.disabled = true;
-                clearCompareBtn.disabled = true;
-                newOnlyCheckbox.disabled = true;
-                exportHashListBtn.disabled = true;
-                if (newOnlyCheckbox.checked) { newOnlyCheckbox.checked = false; currentPage = 0; }
-                return;
-            }
             if (!externalHashSet) {
                 hashStatus.textContent = 'Comparaison inactive';
                 selectNewBtn.disabled = true;
@@ -1487,6 +1509,24 @@
         };
         document.addEventListener('click', onOutsideMenusClick);
 
+        memoryModeSwitch.addEventListener('click', async () => {
+            if (memoryModeSwitch.disabled) return;
+            memoryMode = memoryMode === 'persistent' ? 'session' : 'persistent';
+            prefs.hashMemoryMode = memoryMode;
+            savePrefs();
+            updateMemoryModeUi();
+            if (memoryMode === 'persistent') {
+                // Save whatever is currently loaded now that persisting is back on.
+                try {
+                    await persistCurrentHashSet();
+                } catch (e) {
+                    flashButton(hashStatus, 'Erreur de sauvegarde', updateHashStatus);
+                    return;
+                }
+            }
+            updateHashStatus();
+        });
+
         importHashesBtn.addEventListener('click', () => importHashesInput.click());
 
         importHashesInput.addEventListener('change', async () => {
@@ -1522,7 +1562,7 @@
             } catch (e) {
                 flashButton(hashStatus, 'Erreur import', updateHashStatus);
             } finally {
-                importHashesBtn.disabled = !hashStorageOk;
+                importHashesBtn.disabled = false;
                 importHashesBtn.textContent = 'Charger hash';
             }
         });
@@ -1531,7 +1571,9 @@
             if (!confirm('Effacer la liste de hash comparée ? Cette action est irréversible.')) return;
             externalHashSet = null;
             externalHashSource = '';
-            await clearStoredHashPayload();
+            // Only touch GM storage in persistent mode: in session mode nothing was
+            // ever written there, so an unrelated persisted list must survive.
+            if (memoryMode === 'persistent') await clearStoredHashPayload();
             renderRows(search.value);
             flashButton(clearCompareBtn, 'Effacé');
         });
@@ -1852,6 +1894,7 @@
         document.addEventListener('keydown', onEsc);
 
         // initial render
+        updateMemoryModeUi();
         updateHashStatus();
         renderRows('');
         restoreImportedHashes();
