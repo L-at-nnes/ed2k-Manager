@@ -256,9 +256,11 @@
             let settled = false;
             let worker = null;
             let workerUrl = null;
+            let fallbackTimer = null;
             const finish = (setVal) => {
                 if (settled) return;
                 settled = true;
+                clearTimeout(fallbackTimer);
                 try { if (worker) worker.terminate(); } catch (e) {}
                 try { if (workerUrl) URL.revokeObjectURL(workerUrl); } catch (e) {}
                 resolve(setVal);
@@ -299,7 +301,7 @@
                 };
                 worker.onerror = () => finish(extractEd2kHashesFromContent(content));
                 worker.postMessage(content);
-                setTimeout(() => finish(extractEd2kHashesFromContent(content)), 3000);
+                fallbackTimer = setTimeout(() => { if (!settled) finish(extractEd2kHashesFromContent(content)); }, 3000);
             } catch (e) {
                 finish(extractEd2kHashesFromContent(content));
             }
