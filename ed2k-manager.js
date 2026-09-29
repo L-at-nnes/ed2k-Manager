@@ -501,6 +501,7 @@
     .ed2k-rev-list::-webkit-scrollbar-corner{background:transparent}
     .ed2k-pagination{display:flex;align-items:center;gap:6px;padding:4px 8px;border-right:1px solid rgba(255,255,255,0.08);margin-right:4px}
     .ed2k-pagination-info{font-size:11px;color:#bfefff;opacity:0.85;white-space:nowrap}
+    .ed2k-pagination-label{font-size:11px;color:#9aa4b2;white-space:nowrap}
     .ed2k-pagination-size{width:52px;padding:5px 6px;font-size:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.02);color:#cfe8f6}
     table.ed2k-table{width:100%;border-collapse:collapse;font-size:13px;color:#cfe8f6}
     table.ed2k-table th, table.ed2k-table td{padding:10px 8px;border:none;border-bottom:1px dashed rgba(255,255,255,0.03);}
@@ -1191,6 +1192,7 @@
         // Compact pagination cluster, integrated into the footer (left of Réduire/Fermer)
         // instead of a separate full-width bar.
         const paginationBar = document.createElement('div'); paginationBar.className = 'ed2k-pagination';
+        const paginationLabel = document.createElement('span'); paginationLabel.className = 'ed2k-pagination-label'; paginationLabel.textContent = 'Pagination :';
         const pageSizeInput = document.createElement('input');
         pageSizeInput.type = 'number'; pageSizeInput.min = '10'; pageSizeInput.step = '10'; pageSizeInput.value = String(pageSize);
         pageSizeInput.className = 'ed2k-pagination-size';
@@ -1210,6 +1212,7 @@
             renderRows(search.value);
         });
 
+        paginationBar.appendChild(paginationLabel);
         paginationBar.appendChild(pageSizeInput);
         paginationBar.appendChild(prevPageBtn);
         paginationBar.appendChild(pageInfo);
@@ -2155,9 +2158,11 @@
                     restoreModal();
                     return;
                 }
-                modal.remove();
-                modal = null;
-                btn.title = 'Afficher les liens ed2k';
+                // Must go through the modal's own teardown (not a raw .remove()), or
+                // its keydown/click listeners and MutationObserver leak — this path
+                // was the one spot that still bypassed it.
+                if (typeof modal._ed2kDestroy === 'function') modal._ed2kDestroy();
+                else { modal.remove(); modal = null; btn.title = 'Afficher les liens ed2k'; }
                 return;
             }
             const items = findEd2kLinks();
