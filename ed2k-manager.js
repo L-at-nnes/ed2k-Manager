@@ -1804,7 +1804,20 @@
     btn.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         const menu = document.createElement('div');
-        menu.style.position='fixed'; menu.style.zIndex=99999999; menu.style.right='18px'; menu.style.bottom='80px'; menu.style.background='#04252e'; menu.style.border='1px solid rgba(255,255,255,0.04)'; menu.style.padding='10px'; menu.style.borderRadius='10px'; menu.style.minWidth='180px';
+        menu.style.position='fixed'; menu.style.zIndex=99999999; menu.style.background='#04252e'; menu.style.border='1px solid rgba(255,255,255,0.04)'; menu.style.padding='10px'; menu.style.borderRadius='10px'; menu.style.minWidth='180px';
+        // Position the menu next to the button instead of a fixed bottom-right spot,
+        // so it stays reachable when the button has been moved to another corner.
+        const btnRect = btn.getBoundingClientRect();
+        if (btnRect.left > window.innerWidth / 2) {
+            menu.style.right = `${Math.max(8, window.innerWidth - btnRect.right)}px`;
+        } else {
+            menu.style.left = `${Math.max(8, btnRect.left)}px`;
+        }
+        if (btnRect.top > window.innerHeight / 2) {
+            menu.style.bottom = `${Math.max(8, window.innerHeight - btnRect.top + 10)}px`;
+        } else {
+            menu.style.top = `${Math.max(8, btnRect.bottom + 10)}px`;
+        }
         // Title
         const h = document.createElement('div'); h.textContent = 'Réglages'; h.style.fontWeight='700'; h.style.marginBottom='8px'; menu.appendChild(h);
 
