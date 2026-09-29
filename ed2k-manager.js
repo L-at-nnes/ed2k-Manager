@@ -595,6 +595,7 @@
         function onKeyDown(evt) {
             if (evt.key === 'Escape' || evt.key === 'Esc') {
                 evt.preventDefault();
+                evt.stopImmediatePropagation();
                 cleanup(true);
             }
         }
@@ -1452,7 +1453,7 @@
         });
 
         // handle Escape to close
-        function onEsc(e){ if (e.key === 'Escape' || e.key === 'Esc') { try{ modal.remove(); modal=null; btn.title = 'Afficher les liens ed2k'; }catch(e){} document.removeEventListener('keydown', onEsc); } }
+        function onEsc(e){ if ((e.key === 'Escape' || e.key === 'Esc') && modal && !modal.classList.contains('minimized')) { try{ modal.remove(); modal=null; btn.title = 'Afficher les liens ed2k'; }catch(e){} document.removeEventListener('keydown', onEsc); } }
         document.addEventListener('keydown', onEsc);
 
         // initial render
