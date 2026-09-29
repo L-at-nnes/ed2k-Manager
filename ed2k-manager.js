@@ -638,8 +638,13 @@
     }
 
     function buildModal(items) {
-        if (modal) modal.remove();
+        if (modal) {
+            if (typeof modal._ed2kDestroy === 'function') modal._ed2kDestroy();
+            else modal.remove();
+        }
     modal = document.createElement('div');
+    const self = modal; // fixed reference to this instance, so this closure never
+                         // confuses itself with a later modal reassigned to `modal`.
     modal.className = 'ed2k-rev-modal';
     btn.title = 'Afficher les liens ed2k';
 
@@ -1001,7 +1006,7 @@
         footerActions.appendChild(minimizeBtn);
         // right: close button (ensure it closes modal)
         const closeBtn = document.createElement('button'); closeBtn.className = 'ed2k-btn'; closeBtn.textContent = 'Fermer';
-        closeBtn.addEventListener('click', () => { try { modal.remove(); modal = null; btn.title = 'Afficher les liens ed2k'; } catch (e) {} });
+        closeBtn.addEventListener('click', () => destroy());
         footerActions.appendChild(closeBtn);
         footer.appendChild(credit);
         footer.appendChild(footerActions);
@@ -1263,7 +1268,7 @@
             if (!copied) { flashButton(copyBtn, 'Erreur'); return; }
             flashButton(copyBtn, 'Copié!');
             // close modal after copying selection
-            setTimeout(() => { try { modal.remove(); modal = null; btn.title = 'Afficher les liens ed2k'; } catch(e){} }, 300);
+            setTimeout(() => destroy(), 300);
         });
 
         // copy all links (all items, regardless of checkbox)
@@ -1273,7 +1278,7 @@
             const copied = await copyTextToClipboard(links);
             if (!copied) { flashButton(copyAllBtn, 'Erreur'); return; }
             flashButton(copyAllBtn, 'Copié tout!');
-            setTimeout(() => { try { modal.remove(); modal = null; btn.title = 'Afficher les liens ed2k'; } catch(e){} }, 300);
+            setTimeout(() => destroy(), 300);
         });
 
         // export CSV
@@ -1487,7 +1492,7 @@
         });
 
         // handle Escape to close
-        function onEsc(e){ if ((e.key === 'Escape' || e.key === 'Esc') && modal && !modal.classList.contains('minimized')) { try{ modal.remove(); modal=null; btn.title = 'Afficher les liens ed2k'; }catch(e){} document.removeEventListener('keydown', onEsc); } }
+        function onEsc(e){ if ((e.key === 'Escape' || e.key === 'Esc') && !self.classList.contains('minimized')) { destroy(); } }
         document.addEventListener('keydown', onEsc);
 
         // initial render
@@ -1496,8 +1501,26 @@
         renderRows('');
         restoreImportedHashes();
 
-        // clean up when modal is removed by other means
-        const obs = new MutationObserver(() => { if (!document.body.contains(modal)) { try{ document.removeEventListener('keydown', onEsc); document.removeEventListener('click', onOutsideMenusClick); obs.disconnect(); } catch(e){} } });
+        // Tear down every listener/observer this instance registered, and clear the
+        // shared `modal` reference only if it still points at this instance (it may
+        // already have been replaced by a newer buildModal() call).
+        let destroyed = false;
+        function destroy() {
+            if (destroyed) return;
+            destroyed = true;
+            document.removeEventListener('keydown', onEsc);
+            document.removeEventListener('click', onOutsideMenusClick);
+            try { obs.disconnect(); } catch (e) {}
+            try { self.remove(); } catch (e) {}
+            if (modal === self) {
+                modal = null;
+                btn.title = 'Afficher les liens ed2k';
+            }
+        }
+        self._ed2kDestroy = destroy;
+
+        // safety net: clean up if the modal is ever removed by other means
+        const obs = new MutationObserver(() => { if (!document.body.contains(self)) destroy(); });
         obs.observe(document.body, { childList: true, subtree: true });
     }
 
