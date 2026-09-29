@@ -382,6 +382,21 @@
             matches.forEach(addCandidate);
         }
 
+        // 3) <input>/<textarea> values: their content is not part of the text-node
+        // tree (especially once the user or the page has changed .value), so the
+        // walker above never sees it and they need a dedicated pass.
+        const valueFields = [];
+        const fieldSelector = 'textarea, input[type="text"], input[type="search"], input:not([type])';
+        if (root.nodeType === Node.ELEMENT_NODE && root.matches && root.matches(fieldSelector)) valueFields.push(root);
+        if (root.querySelectorAll) valueFields.push(...root.querySelectorAll(fieldSelector));
+        valueFields.forEach(field => {
+            if (field.closest('.ed2k-rev-btn') || field.closest('.ed2k-rev-modal')) return;
+            const value = field.value || '';
+            if (!value || value.toLowerCase().indexOf(ED2K_PREFIX) === -1) return;
+            const matches = value.match(ED2K_CANDIDATE_REGEX);
+            if (matches) matches.forEach(addCandidate);
+        });
+
         return Array.from(found.values());
     }
 
