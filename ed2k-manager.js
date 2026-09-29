@@ -790,14 +790,14 @@
                     if (!aMissing && !bMissing && a.tomeSortValue !== b.tomeSortValue) {
                         return sortState.dir * (a.tomeSortValue - b.tomeSortValue);
                     }
-                    return a.name.localeCompare(b.name);
+                    return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
                 }
-                if (sortState.col === 'name') return sortState.dir * a.name.localeCompare(b.name);
+                if (sortState.col === 'name') return sortState.dir * a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
                 if (sortState.col === 'size') {
                     const aSize = parseInt(a.size || 0, 10) || 0;
                     const bSize = parseInt(b.size || 0, 10) || 0;
                     if (aSize !== bSize) return sortState.dir * (aSize - bSize);
-                    return a.name.localeCompare(b.name);
+                    return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
                 }
                 return 0;
             });
