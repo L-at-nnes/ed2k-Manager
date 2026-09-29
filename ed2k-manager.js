@@ -772,6 +772,7 @@
     const renameToggleBtn = document.createElement('button'); renameToggleBtn.className = 'ed2k-btn'; renameToggleBtn.textContent = 'Renommer';
     const exportBtn = document.createElement('button'); exportBtn.className = 'ed2k-btn'; exportBtn.textContent = 'Exporter CSV';
     const exportCollectionBtn = document.createElement('button'); exportCollectionBtn.className = 'ed2k-btn'; exportCollectionBtn.textContent = 'Exporter .emulecollection';
+    const exportHashListBtn = document.createElement('button'); exportHashListBtn.className = 'ed2k-btn'; exportHashListBtn.textContent = 'Exporter liste de hash';
     const importHashesBtn = document.createElement('button'); importHashesBtn.className = 'ed2k-btn'; importHashesBtn.textContent = 'Charger hash';
     const selectNewBtn = document.createElement('button'); selectNewBtn.className = 'ed2k-btn'; selectNewBtn.textContent = 'Nouveaux';
     const clearCompareBtn = document.createElement('button'); clearCompareBtn.className = 'ed2k-btn'; clearCompareBtn.textContent = 'Effacer comparaison';
@@ -786,7 +787,7 @@
         btnItem.classList.add('ed2k-menu-item');
         selectMenu.appendChild(btnItem);
     });
-    [exportBtn, exportCollectionBtn].forEach(btnItem => {
+    [exportBtn, exportCollectionBtn, exportHashListBtn].forEach(btnItem => {
         btnItem.classList.add('ed2k-menu-item');
         exportMenu.appendChild(btnItem);
     });
@@ -797,6 +798,7 @@
     const importHashesInput = document.createElement('input');
     importHashesInput.type = 'file';
     importHashesInput.accept = '.txt,.csv,.json,.ndjson,.log,text/plain,text/csv,application/json';
+    importHashesInput.multiple = true;
     importHashesInput.style.display = 'none';
     const hashStatus = document.createElement('div'); hashStatus.className = 'ed2k-hash-status'; hashStatus.textContent = 'Comparaison inactive';
 
@@ -988,6 +990,7 @@
                 selectNewBtn.disabled = true;
                 clearCompareBtn.disabled = true;
                 newOnlyCheckbox.disabled = true;
+                exportHashListBtn.disabled = true;
                 if (newOnlyCheckbox.checked) { newOnlyCheckbox.checked = false; currentPage = 0; }
                 return;
             }
@@ -996,6 +999,7 @@
                 selectNewBtn.disabled = true;
                 clearCompareBtn.disabled = true;
                 newOnlyCheckbox.disabled = true;
+                exportHashListBtn.disabled = true;
                 if (newOnlyCheckbox.checked) { newOnlyCheckbox.checked = false; currentPage = 0; }
                 return;
             }
@@ -1006,6 +1010,7 @@
             selectNewBtn.disabled = false;
             clearCompareBtn.disabled = false;
             newOnlyCheckbox.disabled = false;
+            exportHashListBtn.disabled = false;
         }
 
         function setCheckedAndTrack(cb, checked) {
@@ -1486,14 +1491,22 @@
 
         importHashesInput.addEventListener('change', async () => {
             try {
-                const file = importHashesInput.files && importHashesInput.files[0];
+                const files = Array.from(importHashesInput.files || []);
                 importHashesInput.value = '';
-                if (!file) return;
+                if (!files.length) return;
                 importHashesBtn.disabled = true;
                 importHashesBtn.textContent = 'Import...';
-                const rawContent = await readFileAsText(file);
-                externalHashSet = await parseHashesWithWorker(rawContent);
-                externalHashSource = file.name;
+                // Several files selected at once are parsed and merged into one set.
+                const parsedSets = await Promise.all(files.map(async file => {
+                    const rawContent = await readFileAsText(file);
+                    return parseHashesWithWorker(rawContent);
+                }));
+                const merged = new Set();
+                parsedSets.forEach(set => set.forEach(h => merged.add(h)));
+                externalHashSet = merged;
+                externalHashSource = files.length === 1
+                    ? files[0].name
+                    : (files.length <= 3 ? `${files.length} fichiers (${files.map(f => f.name).join(', ')})` : `${files.length} fichiers`);
                 let saveError = false;
                 try {
                     await persistCurrentHashSet();
@@ -1609,6 +1622,29 @@
                 flashButton(exportCollectionBtn, 'Exporté');
             } catch (e) {
                 flashButton(exportCollectionBtn, 'Erreur');
+            }
+        });
+
+        // Backup/export the imported hash list itself (one hash per line, sorted).
+        exportHashListBtn.addEventListener('click', () => {
+            try {
+                if (!externalHashSet || !externalHashSet.size) {
+                    flashButton(exportHashListBtn, 'Aucun hash');
+                    return;
+                }
+                const content = Array.from(externalHashSet).sort().join('\n') + '\n';
+                const blob = new Blob([content], { type: 'text/plain;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'ed2k-hash-list.txt';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+                flashButton(exportHashListBtn, 'Exporté');
+            } catch (e) {
+                flashButton(exportHashListBtn, 'Erreur');
             }
         });
 
