@@ -16,8 +16,10 @@ ed2k Manager is a lightweight userscript for Tampermonkey or Violentmonkey that 
 - Clean modal interface with bulk selection, Shift+click range selection, regex search, and min/max size filters that accept human friendly values (`10MB`, `2GB`, etc.).
 - Import hash lists from external files (`.csv`, `.json`, `.txt`, etc., UTF-8 or UTF-16) to compare against the current page, display known/new counts, and select only new links in one click.
 - The imported hash list is always saved through Tampermonkey storage and shared across every site; it is only ever deleted by the explicit `Effacer comparaison` button, which asks for confirmation first.
+- `Nouveaux seulement` filter toggle hides links already in the imported hash list, and `Dédupliquer (hash)` collapses links that point to the same file (identical hash) down to the first one found.
 - Large import handling is optimized with background parsing so files containing 10k+ hashes remain smooth to load.
 - Cleaner top toolbar with clear priorities: `Sélectionner` dropdown for bulk selection helpers, direct `Copier` + `Tout copier (N)` buttons (the count and both actions follow your current filter/search), and an `Exporter` dropdown for CSV and `.emulecollection`.
+- The results table is paginated (200 rows at a time) so pages with 10,000+ links stay smooth to search, filter and sort; `Copier tout`/exports still cover every filtered match across all pages, while `Sélectionner` bulk actions apply to the current page (use Shift+click or navigate page by page for a range spanning more than one page).
 - Search by name (plain text or `/regex/flags`), or prefix your query with `hash:` to search by ed2k hash instead.
 - A live selection counter in the header so you always see how many links are checked.
 - Copy helpers for the checked links or for the currently filtered list, plus exports to CSV (`name,size,link`, UTF-8 with BOM, safe against spreadsheet formula injection) and `.emulecollection` (exports use the selection when it exists, otherwise the filtered list; you're warned before anything over 1024 links gets truncated).
