@@ -1893,18 +1893,33 @@
                 btn.appendChild(badge);
             }
             badge.style.display = 'flex';
-            // show exact number
-            badge.textContent = String(items.length);
+            // Only touch the DOM (and thus fire a mutation record) when the count
+            // actually changed; assigning textContent unconditionally used to make
+            // the observer below re-trigger itself on every single update, forever.
+            const next = String(items.length);
+            if (badge.textContent !== next) badge.textContent = next;
         } catch (e) { /* ignore */ }
     }
 
     // debounce helper
     function debounce(fn, wait){ let t; return function(...a){ clearTimeout(t); t = setTimeout(()=> fn.apply(this,a), wait); }; }
 
+    // A mutation is "ours" if it happened inside our own button/modal; those must
+    // never re-trigger a rescan (that's what caused the infinite update loop).
+    function isInternalMutation(m) {
+        let node = m.target;
+        if (node && node.nodeType !== Node.ELEMENT_NODE) node = node.parentElement;
+        if (!node || !node.closest) return false;
+        return !!(node.closest('.ed2k-rev-btn') || node.closest('.ed2k-rev-modal'));
+    }
+
     // MutationObserver to update badge automatically when DOM changes (debounced)
     try {
         const debUpdate = debounce(updateBadge, 400);
-        const mo = new MutationObserver(debUpdate);
+        const mo = new MutationObserver((mutations) => {
+            if (mutations.every(isInternalMutation)) return;
+            debUpdate();
+        });
         mo.observe(document.body, { childList: true, subtree: true, characterData: true });
         // initial update
         setTimeout(updateBadge, 300);
