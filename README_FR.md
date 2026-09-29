@@ -9,7 +9,7 @@
 ed2k Manager est un userscript leger pour Tampermonkey ou Violentmonkey. Il inspecte chaque page web, detecte automatiquement les liens `ed2k://` (y compris les liens percent-encodes comme `ed2k://%7Cfile%7C...`) et les affiche dans un panneau flottant. L'extraction des tomes est maintenant bien plus solide : elle reconnait les marqueurs explicites (`T01`, `Tome 39`, `HS2`, `Chapitre 12.5`), les formats implicites (`- 01 -`, `.02.`, `02 (sur 3)`), ainsi que les editions speciales comme les integrales et les packs de tomes (`Tomes 1 a 5`, `T01-T05`). Vous pouvez ensuite rechercher, filtrer par taille, selectionner des fichiers, copier les liens ou exporter les resultats pour une utilisation ulterieure. Tout fonctionne dans le navigateur ; les preferences et la liste de hash importee sont stockees via Tampermonkey (partagees entre tous les sites, jamais dans le `localStorage` de la page).
 
 ## Fonctionnalites principales
-- Detection robuste des liens ed2k de la page, y compris les liens percent-encodes, avec badge affichant le nombre de correspondances.
+- Detection robuste des liens ed2k de la page, y compris les liens percent-encodes, les liens colles dans un `<textarea>`/`<input>` texte, les liens dans un shadow DOM ouvert (web components, recursivement), et les liens coupes par une balise inline (ex : `ed2k://|file|<b>Nom</b>|123|hash|/`) ; un badge affiche le nombre total de correspondances.
 - Extraction avancee du tome/volume/chapitre avec une colonne dediee et un tri par defaut qui met les tomes les plus eleves en haut tout en gardant les tomes inconnus a la fin.
 - L'extraction gere les marqueurs explicites (incluant Tome 0, Chapitre 0, HS, volumes numerotes), les numerotations implicites, et des editions speciales comme les integrales (`INT`) et certains packs (`PACK`).
 - Clic sur le nom d'un fichier pour cocher/decocher la ligne et copier immediatement son lien.
@@ -71,7 +71,7 @@ Le script est distribue via GitHub. Tampermonkey compare regulierement votre cop
 - **« Stockage persistant indisponible » dans le statut de comparaison :** `GM_setValue`/`GM_getValue` de Tampermonkey ne sont pas disponibles dans votre gestionnaire d'userscripts ; la comparaison de hash en a besoin et reste desactivee tant qu'ils ne le sont pas.
 
 ## Feuille de route et communaute
-Prochaines etapes envisagees : un filtre « nouveaux uniquement » avec deduplication par hash, la detection des liens dans les champs `<input>`/`<textarea>` et le shadow DOM, un renommage par regex avec apercu avant/apres, un bouton de bascule FR/EN, un rendu virtualise pour les tres grandes listes (10k+ liens), et l'import multi-fichiers avec fusion des hash. N'hesitez pas a ouvrir une issue pour proposer une idee ou signaler un bug.
+Prochaines etapes envisagees : un renommage par regex avec apercu avant/apres, un bouton de bascule FR/EN, et l'import multi-fichiers avec fusion des hash. N'hesitez pas a ouvrir une issue pour proposer une idee ou signaler un bug.
 
 ## Contribuer
 Les pull requests sont bienvenues : corrections, nouvelles fonctionnalites, documentation ou traductions. Les commentaires et docstrings restent en anglais pour faciliter la revue. Si vous modifiez l'interface, ajoutez de courtes explications ou captures d'ecran.
