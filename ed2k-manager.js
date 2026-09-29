@@ -97,7 +97,7 @@
     // keep only button visibility + hash memory mode in prefs; theme fixed to ocean.
     // Defaults apply immediately; the real values are loaded from GM storage
     // asynchronously (see initPrefsFromStorage) and re-applied once available.
-    const prefs = { showButton: true, btnPos: 'bottom-right', hashMemoryMode: 'persistent' };
+    const prefs = { showButton: true, btnPos: 'bottom-right', hashMemoryMode: 'session', pageSize: 1000 };
 
     // ed2k detection: capture full candidates, then normalize/parse
     const ED2K_PREFIX = 'ed2k://';
@@ -493,9 +493,16 @@
     .ed2k-rename-preview-arrow{color:#7dd3fc;flex:none}
     .ed2k-rename-preview-new{color:#8fe7ff;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .ed2k-rename-preview-more{font-size:11px;color:#9aa4b2}
-    .ed2k-rev-list{overflow:auto;padding:8px;flex:1;background:transparent}
-    .ed2k-pagination{display:none;align-items:center;justify-content:center;gap:12px;padding:8px;border-top:1px solid rgba(255,255,255,0.04)}
+    .ed2k-rev-list{overflow:auto;padding:8px;flex:1;background:transparent;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.25) transparent}
+    .ed2k-rev-list::-webkit-scrollbar{width:10px;height:10px}
+    .ed2k-rev-list::-webkit-scrollbar-track{background:transparent}
+    .ed2k-rev-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.18);border-radius:999px;border:2px solid transparent;background-clip:padding-box}
+    .ed2k-rev-list::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.32);background-clip:padding-box}
+    .ed2k-rev-list::-webkit-scrollbar-corner{background:transparent}
+    .ed2k-pagination{display:flex;align-items:center;justify-content:center;gap:12px;padding:8px;border-top:1px solid rgba(255,255,255,0.04)}
     .ed2k-pagination-info{font-size:12px;color:#bfefff;opacity:0.9}
+    .ed2k-pagination-size{display:flex;align-items:center;gap:6px;font-size:12px;color:#cfe8f6}
+    .ed2k-pagination-size input{width:64px}
     table.ed2k-table{width:100%;border-collapse:collapse;font-size:13px;color:#cfe8f6}
     table.ed2k-table th, table.ed2k-table td{padding:10px 8px;border-bottom:1px dashed rgba(255,255,255,0.03);}
     table.ed2k-table th{color:#9aa4b2;text-align:left;font-size:12px}
@@ -816,7 +823,11 @@
     // Import/compare always works from memory alone; only "Persistante" mode needs
     // GM storage. Without it, force "Session" and disable switching away from it.
     const hashStorageOk = gmStorageAvailable();
-    let memoryMode = hashStorageOk ? (prefs.hashMemoryMode === 'session' ? 'session' : 'persistent') : 'session';
+    let memoryMode = (hashStorageOk && prefs.hashMemoryMode === 'persistent') ? 'persistent' : 'session';
+    // pagination state: only one page of rows is ever built, so a keystroke on a
+    // 10k+ link page no longer rebuilds thousands of <tr> elements. User-configurable
+    // (see pageSizeInput below), remembered via prefs.
+    let pageSize = Math.max(10, parseInt(prefs.pageSize, 10) || 1000);
     const itemByLink = new Map(items.map(it => [it.link, it]));
 
     const memoryModeWrap = document.createElement('div'); memoryModeWrap.className = 'ed2k-mode-wrap';
@@ -1096,10 +1107,10 @@
             try { copyAllBtn.textContent = `Copier tout (${filtered.length})`; } catch(e){}
             updateRenameStatus();
 
-            const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+            const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
             currentPage = Math.min(currentPage, totalPages - 1);
-            const pageStart = currentPage * PAGE_SIZE;
-            const pageItems = filtered.slice(pageStart, pageStart + PAGE_SIZE);
+            const pageStart = currentPage * pageSize;
+            const pageItems = filtered.slice(pageStart, pageStart + pageSize);
 
             pageItems.forEach((it, idx) => {
                 const tr = document.createElement('tr');
@@ -1160,13 +1171,16 @@
         }
 
         function updatePaginationBar(totalCount, totalPages) {
+            // The page-size control stays available even on a single page, so users
+            // with a small result set can still raise/lower it ahead of time.
             if (totalPages <= 1) {
-                paginationBar.style.display = 'none';
+                pageInfo.textContent = `${totalCount} sur ${totalCount}`;
+                prevPageBtn.disabled = true;
+                nextPageBtn.disabled = true;
                 return;
             }
-            paginationBar.style.display = 'flex';
-            const start = currentPage * PAGE_SIZE + 1;
-            const end = Math.min(totalCount, start + PAGE_SIZE - 1);
+            const start = currentPage * pageSize + 1;
+            const end = Math.min(totalCount, start + pageSize - 1);
             pageInfo.textContent = `${start}-${end} sur ${totalCount} • page ${currentPage + 1}/${totalPages}`;
             prevPageBtn.disabled = currentPage === 0;
             nextPageBtn.disabled = currentPage >= totalPages - 1;
@@ -1182,6 +1196,23 @@
         const nextPageBtn = document.createElement('button'); nextPageBtn.className = 'ed2k-btn'; nextPageBtn.textContent = 'Suivant ›';
         prevPageBtn.addEventListener('click', () => { if (currentPage > 0) { currentPage -= 1; renderRows(search.value); } });
         nextPageBtn.addEventListener('click', () => { currentPage += 1; renderRows(search.value); });
+
+        const pageSizeWrap = document.createElement('label'); pageSizeWrap.className = 'ed2k-pagination-size';
+        const pageSizeInput = document.createElement('input');
+        pageSizeInput.type = 'number'; pageSizeInput.min = '10'; pageSizeInput.step = '10'; pageSizeInput.value = String(pageSize);
+        pageSizeWrap.appendChild(document.createTextNode('Par page'));
+        pageSizeWrap.appendChild(pageSizeInput);
+        pageSizeInput.addEventListener('change', () => {
+            const next = Math.max(10, parseInt(pageSizeInput.value, 10) || pageSize);
+            pageSizeInput.value = String(next);
+            pageSize = next;
+            prefs.pageSize = next;
+            savePrefs();
+            currentPage = 0;
+            renderRows(search.value);
+        });
+
+        paginationBar.appendChild(pageSizeWrap);
         paginationBar.appendChild(prevPageBtn);
         paginationBar.appendChild(pageInfo);
         paginationBar.appendChild(nextPageBtn);
@@ -1840,9 +1871,6 @@
 
     // sorting state (default: tome descending)
     let sortState = { col: 'tome', dir: -1 };
-    // pagination state: only one page of rows is ever built, so a keystroke on a
-    // 10k+ link page no longer rebuilds thousands of <tr> elements
-    const PAGE_SIZE = 200;
     let currentPage = 0;
     function defaultDirFor(col) { return col === 'tome' ? -1 : 1; }
     // wire search input and size inputs to rendering (supports regex via makeFilterFromQuery)
