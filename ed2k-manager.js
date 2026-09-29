@@ -477,7 +477,14 @@
     .ed2k-rename-panel{display:none;gap:8px;align-items:center;flex-wrap:wrap;padding:8px;margin:0 8px 8px;border-bottom:1px solid rgba(255,255,255,0.05)}
     .ed2k-rename-panel.open{display:flex}
     .ed2k-rename-input{padding:7px 9px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);background:rgba(255,255,255,0.03);color:#e6fbff;min-width:220px}
+    .ed2k-rename-mode{min-width:110px}
     .ed2k-rename-status{font-size:12px;color:#bfefff;opacity:0.9}
+    .ed2k-rename-preview{flex-basis:100%;display:none;flex-direction:column;gap:4px;padding:8px;margin-top:2px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04);max-height:160px;overflow:auto}
+    .ed2k-rename-preview-row{display:flex;align-items:center;gap:8px;font-size:12px;color:#cfe8f6}
+    .ed2k-rename-preview-old{opacity:0.65;text-decoration:line-through;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:38%}
+    .ed2k-rename-preview-arrow{color:#7dd3fc;flex:none}
+    .ed2k-rename-preview-new{color:#8fe7ff;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .ed2k-rename-preview-more{font-size:11px;color:#9aa4b2}
     .ed2k-rev-list{overflow:auto;padding:8px;flex:1;background:transparent}
     .ed2k-pagination{display:none;align-items:center;justify-content:center;gap:12px;padding:8px;border-top:1px solid rgba(255,255,255,0.04)}
     .ed2k-pagination-info{font-size:12px;color:#bfefff;opacity:0.9}
@@ -845,19 +852,31 @@
         header.appendChild(toolbar);
 
         const renamePanel = document.createElement('div'); renamePanel.className = 'ed2k-rename-panel';
+        const renameModeSelect = document.createElement('select'); renameModeSelect.className = 'ed2k-rename-input ed2k-rename-mode';
+        [['text', 'Texte'], ['regex', 'Regex'], ['template', 'Gabarit']].forEach(([value, label]) => {
+            const opt = document.createElement('option'); opt.value = value; opt.textContent = label;
+            renameModeSelect.appendChild(opt);
+        });
         const renameFindInput = document.createElement('input'); renameFindInput.className = 'ed2k-rename-input'; renameFindInput.placeholder = 'Texte \u00e0 remplacer';
         const renameReplaceInput = document.createElement('input'); renameReplaceInput.className = 'ed2k-rename-input'; renameReplaceInput.placeholder = 'Remplacer par';
+        const renameTemplateInput = document.createElement('input'); renameTemplateInput.className = 'ed2k-rename-input'; renameTemplateInput.placeholder = 'Gabarit : Serie T{tome:02} - {name}{ext}';
+        renameTemplateInput.title = 'Jetons disponibles : {name} (nom sans extension), {ext} (extension avec le point), {tome} (num\u00e9ro de tome), {n} (compteur s\u00e9quentiel). Ajoutez :0N pour le z\u00e9ro-remplissage, ex. {n:03}.';
+        renameTemplateInput.style.display = 'none';
         const renameSelectedBtn = document.createElement('button'); renameSelectedBtn.className = 'ed2k-btn primary'; renameSelectedBtn.textContent = 'S\u00e9lection';
         const renameVisibleBtn = document.createElement('button'); renameVisibleBtn.className = 'ed2k-btn'; renameVisibleBtn.textContent = 'R\u00e9sultats filtr\u00e9s';
         const renameUndoBtn = document.createElement('button'); renameUndoBtn.className = 'ed2k-btn'; renameUndoBtn.textContent = 'Annuler';
         renameUndoBtn.disabled = true;
         const renameStatus = document.createElement('div'); renameStatus.className = 'ed2k-rename-status'; renameStatus.textContent = '0 lien concern\u00e9';
+        const renamePreview = document.createElement('div'); renamePreview.className = 'ed2k-rename-preview'; renamePreview.style.display = 'none';
+        renamePanel.appendChild(renameModeSelect);
         renamePanel.appendChild(renameFindInput);
         renamePanel.appendChild(renameReplaceInput);
+        renamePanel.appendChild(renameTemplateInput);
         renamePanel.appendChild(renameSelectedBtn);
         renamePanel.appendChild(renameVisibleBtn);
         renamePanel.appendChild(renameUndoBtn);
         renamePanel.appendChild(renameStatus);
+        renamePanel.appendChild(renamePreview);
 
         const list = document.createElement('div'); list.className = 'ed2k-rev-list';
 
@@ -908,28 +927,32 @@
                     return true;
                 });
             }
-            filtered.sort((a, b) => {
-                if (sortState.col === 'tome') {
-                    const aMissing = !Number.isFinite(a.tomeSortValue);
-                    const bMissing = !Number.isFinite(b.tomeSortValue);
-                    // Always keep items without tome information at the end.
-                    if (aMissing && !bMissing) return 1;
-                    if (bMissing && !aMissing) return -1;
-                    if (!aMissing && !bMissing && a.tomeSortValue !== b.tomeSortValue) {
-                        return sortState.dir * (a.tomeSortValue - b.tomeSortValue);
-                    }
-                    return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
-                }
-                if (sortState.col === 'name') return sortState.dir * a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
-                if (sortState.col === 'size') {
-                    const aSize = parseInt(a.size || 0, 10) || 0;
-                    const bSize = parseInt(b.size || 0, 10) || 0;
-                    if (aSize !== bSize) return sortState.dir * (aSize - bSize);
-                    return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
-                }
-                return 0;
-            });
+            filtered.sort(compareItems);
             return filtered;
+        }
+
+        // Shared with the template-rename numbering below, so {n} follows the same
+        // order the table is currently sorted in, not the raw scan order.
+        function compareItems(a, b) {
+            if (sortState.col === 'tome') {
+                const aMissing = !Number.isFinite(a.tomeSortValue);
+                const bMissing = !Number.isFinite(b.tomeSortValue);
+                // Always keep items without tome information at the end.
+                if (aMissing && !bMissing) return 1;
+                if (bMissing && !aMissing) return -1;
+                if (!aMissing && !bMissing && a.tomeSortValue !== b.tomeSortValue) {
+                    return sortState.dir * (a.tomeSortValue - b.tomeSortValue);
+                }
+                return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+            }
+            if (sortState.col === 'name') return sortState.dir * a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+            if (sortState.col === 'size') {
+                const aSize = parseInt(a.size || 0, 10) || 0;
+                const bSize = parseInt(b.size || 0, 10) || 0;
+                if (aSize !== bSize) return sortState.dir * (aSize - bSize);
+                return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+            }
+            return 0;
         }
 
         function hasImportedHash(item) {
@@ -1189,22 +1212,126 @@
             master.indeterminate = checked > 0 && checked < boxes.length;
         }
 
-        function countRenameTargets(sourceItems, findText) {
-            if (!findText) return 0;
-            return sourceItems.reduce((count, it) => count + (String(it.rawName || it.name || '').includes(findText) ? 1 : 0), 0);
+        // {name} (base name, no extension), {ext} (extension with its dot),
+        // {tome} (tome/chapter number when known), {n} (1-based sequential counter
+        // in the current sort order). Any token accepts a :0N padding suffix, e.g. {n:03}.
+        function splitNameExt(name) {
+            const str = String(name || '');
+            const dot = str.lastIndexOf('.');
+            if (dot <= 0) return { base: str, ext: '' };
+            return { base: str.slice(0, dot), ext: str.slice(dot) };
+        }
+
+        function renderRenameTemplate(template, item, n) {
+            const { base, ext } = splitNameExt(String(item.rawName || item.name || ''));
+            const ctx = {
+                name: base,
+                ext,
+                tome: Number.isFinite(item.tomeSortValue) ? item.tomeSortValue : '',
+                n,
+            };
+            return String(template).replace(/\{(\w+)(?::0(\d+))?\}/g, (whole, key, pad) => {
+                if (!(key in ctx)) return whole; // unknown token: leave as-is so typos are visible
+                let val = ctx[key];
+                val = (val === '' || val === null || val === undefined) ? '' : String(val);
+                if (pad && val !== '') val = val.padStart(parseInt(pad, 10), '0');
+                return val;
+            });
+        }
+
+        // Single source of truth for both the live preview and the actual apply, so
+        // what you see in the preview is guaranteed to be exactly what gets applied.
+        function computeRenamePlan(sourceItems) {
+            const mode = renameModeSelect.value;
+            const findText = renameFindInput.value;
+            const replaceText = renameReplaceInput.value;
+            const templateText = renameTemplateInput.value;
+
+            let regex = null;
+            let regexError = null;
+            if (mode === 'regex') {
+                if (!findText) { regexError = null; }
+                else {
+                    const parsed = parseSlashRegex(findText);
+                    if (!parsed) { regexError = 'Format attendu : /motif/flags'; }
+                    else {
+                        try { regex = new RegExp(parsed.pattern, parsed.flags); }
+                        catch (e) { regexError = 'Regex invalide'; }
+                    }
+                }
+            }
+
+            let numbering = null;
+            if (mode === 'template' && templateText) {
+                numbering = new Map();
+                sourceItems.slice().sort(compareItems).forEach((it, idx) => numbering.set(it, idx + 1));
+            }
+
+            const plan = [];
+            if (!regexError) {
+                sourceItems.forEach(it => {
+                    const oldRawName = String(it.rawName || it.name || '');
+                    let newRawName = null;
+                    if (mode === 'text') {
+                        if (findText && oldRawName.includes(findText)) {
+                            newRawName = oldRawName.split(findText).join(replaceText);
+                        }
+                    } else if (mode === 'regex') {
+                        if (regex) {
+                            regex.lastIndex = 0;
+                            if (regex.test(oldRawName)) {
+                                regex.lastIndex = 0;
+                                newRawName = oldRawName.replace(regex, replaceText);
+                            }
+                        }
+                    } else if (mode === 'template') {
+                        if (templateText) newRawName = renderRenameTemplate(templateText, it, numbering.get(it) || 1);
+                    }
+                    if (newRawName != null && newRawName !== oldRawName) {
+                        plan.push({ item: it, oldRawName, newRawName });
+                    }
+                });
+            }
+            return { plan, regexError };
+        }
+
+        function renderRenamePreview(plan) {
+            renamePreview.innerHTML = '';
+            if (!plan.length) { renamePreview.style.display = 'none'; return; }
+            renamePreview.style.display = 'flex';
+            const shown = plan.slice(0, 8);
+            shown.forEach(({ oldRawName, newRawName }) => {
+                const row = document.createElement('div'); row.className = 'ed2k-rename-preview-row';
+                row.innerHTML = `<span class="ed2k-rename-preview-old">${escapeHtml(oldRawName)}</span><span class="ed2k-rename-preview-arrow">\u2192</span><span class="ed2k-rename-preview-new">${escapeHtml(newRawName)}</span>`;
+                renamePreview.appendChild(row);
+            });
+            if (plan.length > shown.length) {
+                const more = document.createElement('div'); more.className = 'ed2k-rename-preview-more';
+                more.textContent = `+${plan.length - shown.length} autre(s)`;
+                renamePreview.appendChild(more);
+            }
+        }
+
+        function updateRenameModeUi() {
+            const mode = renameModeSelect.value;
+            renameFindInput.style.display = mode === 'template' ? 'none' : '';
+            renameReplaceInput.style.display = mode === 'template' ? 'none' : '';
+            renameTemplateInput.style.display = mode === 'template' ? '' : 'none';
+            renameFindInput.placeholder = mode === 'regex' ? '/motif/flags' : 'Texte \u00e0 remplacer';
         }
 
         function updateRenameStatus() {
             renameUndoBtn.disabled = renameHistory.length === 0;
             if (!renamePanel.classList.contains('open')) return;
-            const findText = renameFindInput.value;
-            if (!findText) {
-                renameStatus.textContent = 'Texte \u00e0 remplacer requis';
+            const { plan: selectedPlan, regexError } = computeRenamePlan(getSelectedItems());
+            if (regexError) {
+                renameStatus.textContent = regexError;
+                renderRenamePreview([]);
                 return;
             }
-            const selectedCount = countRenameTargets(getSelectedItems(), findText);
-            const visibleCount = countRenameTargets(currentVisibleItems, findText);
-            renameStatus.textContent = `${selectedCount} s\u00e9lection / ${visibleCount} filtr\u00e9(s)`;
+            const { plan: visiblePlan } = computeRenamePlan(currentVisibleItems);
+            renameStatus.textContent = `${selectedPlan.length} s\u00e9lection / ${visiblePlan.length} filtr\u00e9(s)`;
+            renderRenamePreview(visiblePlan);
         }
 
         function snapshotItem(item) {
@@ -1241,23 +1368,20 @@
         }
 
         function applyRenameTo(sourceItems, button) {
-            const findText = renameFindInput.value;
-            const replaceText = renameReplaceInput.value;
-            if (!findText) { flashButton(button, 'Texte requis'); return; }
+            const { plan, regexError } = computeRenamePlan(sourceItems);
+            if (regexError) { flashButton(button, regexError); return; }
+            if (!plan.length) { flashButton(button, 'Aucun match'); updateRenameStatus(); return; }
             let changed = 0;
             const historyEntry = [];
-            sourceItems.forEach(it => {
-                const oldRawName = String(it.rawName || it.name || '');
-                if (!oldRawName.includes(findText)) return;
-                const newRawName = oldRawName.split(findText).join(replaceText);
-                const before = snapshotItem(it);
-                if (updateItemAfterRename(it, newRawName)) {
+            plan.forEach(({ item, newRawName }) => {
+                const before = snapshotItem(item);
+                if (updateItemAfterRename(item, newRawName)) {
                     historyEntry.push(before);
                     changed += 1;
                 }
             });
             if (!changed) {
-                flashButton(button, 'Aucun match');
+                flashButton(button, 'Aucun changement');
                 updateRenameStatus();
                 return;
             }
@@ -1313,13 +1437,18 @@
         renameToggleBtn.addEventListener('click', () => {
             renamePanel.classList.toggle('open');
             updateRenameStatus();
-            if (renamePanel.classList.contains('open')) renameFindInput.focus();
+            if (renamePanel.classList.contains('open')) {
+                (renameModeSelect.value === 'template' ? renameTemplateInput : renameFindInput).focus();
+            }
         });
+        renameModeSelect.addEventListener('change', () => { updateRenameModeUi(); updateRenameStatus(); });
         renameFindInput.addEventListener('input', updateRenameStatus);
         renameReplaceInput.addEventListener('input', updateRenameStatus);
+        renameTemplateInput.addEventListener('input', updateRenameStatus);
         renameSelectedBtn.addEventListener('click', () => applyRenameTo(getSelectedItems(), renameSelectedBtn));
         renameVisibleBtn.addEventListener('click', () => applyRenameTo(currentVisibleItems, renameVisibleBtn));
         renameUndoBtn.addEventListener('click', undoLastRename);
+        updateRenameModeUi();
 
         let selectMenuOpen = false;
         let exportMenuOpen = false;
@@ -1592,12 +1721,10 @@
                 if (!needle) return () => true;
                 return it => String(it.hash || '').toLowerCase().includes(needle);
             }
-            if (q.startsWith('/') && q.lastIndexOf('/')>0){
-                const last = q.lastIndexOf('/');
-                const pattern = q.slice(1,last);
-                const flags = q.slice(last+1);
+            const slashRegex = parseSlashRegex(q);
+            if (slashRegex) {
                 try {
-                    const re = new RegExp(pattern, flags);
+                    const re = new RegExp(slashRegex.pattern, slashRegex.flags);
                     // RegExp.test is stateful when using the global flag (g).
                     // Reset lastIndex before each test to avoid skipping matches.
                     return it => {
@@ -1902,6 +2029,15 @@
     }
 
     function shorten(s) { return s.length>48 ? s.slice(0,42)+'…'+s.slice(-6) : s; }
+
+    // Parses the shared "/pattern/flags" convention used by both the search box
+    // and regex-mode renaming. Returns null if the string isn't in that form.
+    function parseSlashRegex(str) {
+        const q = String(str || '').trim();
+        if (!(q.startsWith('/') && q.lastIndexOf('/') > 0)) return null;
+        const last = q.lastIndexOf('/');
+        return { pattern: q.slice(1, last), flags: q.slice(last + 1) };
+    }
 
     function escapeHtml(s) { return String(s).replace(/[&<>"']/g, function(m){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]}); }
 
