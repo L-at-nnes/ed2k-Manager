@@ -600,7 +600,7 @@
             const tipTop = Math.max(8, rect.top - 36);
             tip.style.left = `${tipLeft}px`;
             tip.style.top = `${tipTop}px`;
-            tip.textContent = `${currentItems.length} lien(s) ed2k - clic pour ouvrir, molette pour ajuster, Esc pour annuler`;
+            tip.textContent = `${currentItems.length} lien(s) ed2k - clic ou appui long pour ouvrir, molette pour ajuster, Esc pour annuler`;
         }
 
         function cleanup(restorePrevious) {
@@ -608,6 +608,10 @@
             document.removeEventListener('click', onClick, true);
             document.removeEventListener('keydown', onKeyDown, true);
             document.removeEventListener('wheel', onWheel, true);
+            document.removeEventListener('touchstart', onTouchStart, true);
+            document.removeEventListener('touchmove', onTouchMove, true);
+            document.removeEventListener('touchend', onTouchEnd, true);
+            clearTimeout(longPressTimer);
             try { highlight.remove(); tip.remove(); } catch (e) {}
             if (restorePrevious && previousModal && document.body.contains(previousModal)) restoreModal();
         }
@@ -649,10 +653,46 @@
             }
         }
 
+        // Touch fallback: hover has no touch equivalent, so preview the candidate
+        // under the finger and confirm it with a long press instead of a click.
+        let longPressTimer = null;
+        function previewFromPoint(x, y) {
+            const target = document.elementFromPoint(x, y);
+            if (!target || !target.closest) return;
+            lastTarget = target;
+            currentCandidates = collectCandidates(target);
+            currentCandidateIndex = chooseDefaultCandidate(currentCandidates);
+            drawCandidate(currentCandidates[currentCandidateIndex]);
+        }
+        function onTouchStart(evt) {
+            if (!evt.touches || !evt.touches.length) return;
+            const touch = evt.touches[0];
+            previewFromPoint(touch.clientX, touch.clientY);
+            clearTimeout(longPressTimer);
+            longPressTimer = setTimeout(() => {
+                if (currentCandidate && currentItems.length) {
+                    cleanup(false);
+                    buildModal(currentItems);
+                }
+            }, 550);
+        }
+        function onTouchMove(evt) {
+            clearTimeout(longPressTimer);
+            if (!evt.touches || !evt.touches.length) return;
+            const touch = evt.touches[0];
+            previewFromPoint(touch.clientX, touch.clientY);
+        }
+        function onTouchEnd() {
+            clearTimeout(longPressTimer);
+        }
+
         document.addEventListener('mousemove', onMouseMove, true);
         document.addEventListener('click', onClick, true);
         document.addEventListener('keydown', onKeyDown, true);
         document.addEventListener('wheel', onWheel, { capture: true, passive: false });
+        document.addEventListener('touchstart', onTouchStart, true);
+        document.addEventListener('touchmove', onTouchMove, true);
+        document.addEventListener('touchend', onTouchEnd, true);
     }
 
     function buildModal(items) {
