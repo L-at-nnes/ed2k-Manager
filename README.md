@@ -15,7 +15,7 @@ ed2k Manager is a lightweight userscript for Tampermonkey or Violentmonkey that 
 - Click on a file name to toggle its checkbox and copy its ed2k link immediately.
 - Batch rename with three modes — plain text, regex (`/pattern/flags`, `$1`/`$2` capture groups) and template (`{name}`, `{ext}`, `{tome}`, `{n}` sequential counter, all supporting zero-padding like `{n:03}`) — with a live before/after preview so you see exactly what will change before applying it to the selection or the filtered list, plus one-click undo.
 - Clean modal interface with bulk selection, Shift+click range selection, regex search, and min/max size filters that accept human friendly values (`10MB`, `2GB`, etc.).
-- Import hash lists from external files (`.csv`, `.json`, `.txt`, etc., UTF-8 or UTF-16) to compare against the current page, display known/new counts, and select only new links in one click.
+- Import hash lists from external files (`.csv`, `.json`, `.txt`, etc., UTF-8 or UTF-16) to compare against the current page, display known/new counts, and select only new links in one click. Select several files at once and they're merged into a single list; `Exporter liste de hash` backs up the current list as a sorted, one-hash-per-line `.txt` file.
 - The imported hash list is always saved through Tampermonkey storage and shared across every site; it is only ever deleted by the explicit `Effacer comparaison` button, which asks for confirmation first.
 - `Nouveaux seulement` filter toggle hides links already in the imported hash list, and `Dédupliquer (hash)` collapses links that point to the same file (identical hash) down to the first one found.
 - Large import handling is optimized with background parsing so files containing 10k+ hashes remain smooth to load.
@@ -72,7 +72,7 @@ The script is served directly from GitHub. Tampermonkey checks the canonical URL
 - **"Stockage persistant indisponible" in the hash status:** Tampermonkey's `GM_setValue`/`GM_getValue` are unavailable in your userscript manager; the hash-comparison feature needs them and is disabled until they're available.
 
 ## Roadmap and Community
-Planned next steps: an FR/EN language toggle and multi-file hash import with merging. Feel free to open an issue to discuss ideas or report bugs, and every suggestion helps shape the next milestone.
+Planned next step: an FR/EN language toggle. Feel free to open an issue to discuss ideas or report bugs, and every suggestion helps shape the next milestone.
 
 ## Contributing
 Pull requests are welcome for bug fixes, enhancements, documentation, or translation improvements. The code comments and docstrings are written in English. If you add UI strings, please keep them easy to translate, and include screenshots or short clips when proposing interface changes.

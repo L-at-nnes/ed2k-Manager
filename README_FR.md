@@ -15,7 +15,7 @@ ed2k Manager est un userscript leger pour Tampermonkey ou Violentmonkey. Il insp
 - Clic sur le nom d'un fichier pour cocher/decocher la ligne et copier immediatement son lien.
 - Renommage par lot avec trois modes -- texte simple, regex (`/motif/flags`, groupes captures `$1`/`$2`) et gabarit (`{name}`, `{ext}`, `{tome}`, `{n}` compteur sequentiel, tous avec zero-remplissage type `{n:03}`) -- avec un apercu avant/apres en direct pour voir exactement ce qui va changer avant de l'appliquer a la selection ou a la liste filtree, plus une annulation en un clic.
 - Fenetre modale claire avec selection multiple, selection par plage (**Shift+clic**), recherche regex et filtres Min/Max acceptant des valeurs lisibles (`10MB`, `2GB`, etc.).
-- Import de listes de hash depuis un fichier externe (`.csv`, `.json`, `.txt`, etc., UTF-8 ou UTF-16) pour comparer avec la page, afficher le nombre de hash connus/nouveaux et cocher les nouveaux en un clic.
+- Import de listes de hash depuis un fichier externe (`.csv`, `.json`, `.txt`, etc., UTF-8 ou UTF-16) pour comparer avec la page, afficher le nombre de hash connus/nouveaux et cocher les nouveaux en un clic. Plusieurs fichiers peuvent etre selectionnes en une fois et sont fusionnes en une seule liste ; `Exporter liste de hash` sauvegarde la liste courante en `.txt` (un hash par ligne, trie).
 - La liste de hash importee est toujours sauvegardee (stockage Tampermonkey) et partagee entre tous les sites ; seul le bouton explicite `Effacer comparaison` la supprime, apres confirmation.
 - Le filtre `Nouveaux seulement` masque les liens deja presents dans la liste de hash importee, et `Dedupliquer (hash)` ne garde que la premiere occurrence de chaque hash (fichier linke plusieurs fois sur la page).
 - Import de gros fichiers optimisé avec parsing en arrière-plan pour charger plus facilement des listes de 10k hash et plus.
@@ -72,7 +72,7 @@ Le script est distribue via GitHub. Tampermonkey compare regulierement votre cop
 - **« Stockage persistant indisponible » dans le statut de comparaison :** `GM_setValue`/`GM_getValue` de Tampermonkey ne sont pas disponibles dans votre gestionnaire d'userscripts ; la comparaison de hash en a besoin et reste desactivee tant qu'ils ne le sont pas.
 
 ## Feuille de route et communaute
-Prochaines etapes envisagees : un bouton de bascule FR/EN, et l'import multi-fichiers avec fusion des hash. N'hesitez pas a ouvrir une issue pour proposer une idee ou signaler un bug.
+Prochaine etape envisagee : un bouton de bascule FR/EN. N'hesitez pas a ouvrir une issue pour proposer une idee ou signaler un bug.
 
 ## Contribuer
 Les pull requests sont bienvenues : corrections, nouvelles fonctionnalites, documentation ou traductions. Les commentaires et docstrings restent en anglais pour faciliter la revue. Si vous modifiez l'interface, ajoutez de courtes explications ou captures d'ecran.
