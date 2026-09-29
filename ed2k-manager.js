@@ -418,6 +418,8 @@
     .ed2k-rename-input{padding:7px 9px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);background:rgba(255,255,255,0.03);color:#e6fbff;min-width:220px}
     .ed2k-rename-status{font-size:12px;color:#bfefff;opacity:0.9}
     .ed2k-rev-list{overflow:auto;padding:8px;flex:1;background:transparent}
+    .ed2k-pagination{display:none;align-items:center;justify-content:center;gap:12px;padding:8px;border-top:1px solid rgba(255,255,255,0.04)}
+    .ed2k-pagination-info{font-size:12px;color:#bfefff;opacity:0.9}
     table.ed2k-table{width:100%;border-collapse:collapse;font-size:13px;color:#cfe8f6}
     table.ed2k-table th, table.ed2k-table td{padding:10px 8px;border-bottom:1px dashed rgba(255,255,255,0.03);}
     table.ed2k-table th{color:#9aa4b2;text-align:left;font-size:12px}
@@ -949,7 +951,13 @@
             try { title.textContent = `ed2k — ${filtered.length} trouvé(s)`; } catch(e){}
             try { copyAllBtn.textContent = `Copier tout (${filtered.length})`; } catch(e){}
             updateRenameStatus();
-            filtered.forEach((it, idx) => {
+
+            const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+            currentPage = Math.min(currentPage, totalPages - 1);
+            const pageStart = currentPage * PAGE_SIZE;
+            const pageItems = filtered.slice(pageStart, pageStart + PAGE_SIZE);
+
+            pageItems.forEach((it, idx) => {
                 const tr = document.createElement('tr');
                 const cbTd = document.createElement('td');
                 const cb = document.createElement('input'); cb.type = 'checkbox'; cb.dataset.link = it.link; cb.className = 'ed2k-row-cb'; cb.setAttribute('aria-label', `Sélectionner ${it.name}`);
@@ -1004,10 +1012,35 @@
             tbody.appendChild(frag);
             updateMasterCheckbox();
             updateHashStatus();
+            updatePaginationBar(filtered.length, totalPages);
+        }
+
+        function updatePaginationBar(totalCount, totalPages) {
+            if (totalPages <= 1) {
+                paginationBar.style.display = 'none';
+                return;
+            }
+            paginationBar.style.display = 'flex';
+            const start = currentPage * PAGE_SIZE + 1;
+            const end = Math.min(totalCount, start + PAGE_SIZE - 1);
+            pageInfo.textContent = `${start}-${end} sur ${totalCount} • page ${currentPage + 1}/${totalPages}`;
+            prevPageBtn.disabled = currentPage === 0;
+            nextPageBtn.disabled = currentPage >= totalPages - 1;
         }
 
         table.appendChild(thead); table.appendChild(tbody);
         list.appendChild(table);
+
+        // Pagination bar: kept outside the scrolling list so it stays visible.
+        const paginationBar = document.createElement('div'); paginationBar.className = 'ed2k-pagination';
+        const prevPageBtn = document.createElement('button'); prevPageBtn.className = 'ed2k-btn'; prevPageBtn.textContent = '‹ Précédent';
+        const pageInfo = document.createElement('span'); pageInfo.className = 'ed2k-pagination-info';
+        const nextPageBtn = document.createElement('button'); nextPageBtn.className = 'ed2k-btn'; nextPageBtn.textContent = 'Suivant ›';
+        prevPageBtn.addEventListener('click', () => { if (currentPage > 0) { currentPage -= 1; renderRows(search.value); } });
+        nextPageBtn.addEventListener('click', () => { currentPage += 1; renderRows(search.value); });
+        paginationBar.appendChild(prevPageBtn);
+        paginationBar.appendChild(pageInfo);
+        paginationBar.appendChild(nextPageBtn);
 
         const footer = document.createElement('div'); footer.style.padding = '8px'; footer.style.display = 'flex'; footer.style.justifyContent = 'space-between'; footer.style.alignItems = 'center';
         // left: credit link (make it clearly visible)
@@ -1043,7 +1076,7 @@
         footer.appendChild(credit);
         footer.appendChild(footerActions);
 
-        modal.appendChild(header); modal.appendChild(renamePanel); modal.appendChild(list); modal.appendChild(footer);
+        modal.appendChild(header); modal.appendChild(renamePanel); modal.appendChild(list); modal.appendChild(paginationBar); modal.appendChild(footer);
         document.body.appendChild(modal);
 
         // helpers
@@ -1508,13 +1541,17 @@
 
     // sorting state (default: tome descending)
     let sortState = { col: 'tome', dir: -1 };
+    // pagination state: only one page of rows is ever built, so a keystroke on a
+    // 10k+ link page no longer rebuilds thousands of <tr> elements
+    const PAGE_SIZE = 200;
+    let currentPage = 0;
     function defaultDirFor(col) { return col === 'tome' ? -1 : 1; }
     // wire search input and size inputs to rendering (supports regex via makeFilterFromQuery)
-    const debRender = debounce(() => renderRows(search.value), 120);
+    const debRender = debounce(() => { currentPage = 0; renderRows(search.value); }, 120);
     search.addEventListener('input', debRender);
     minInput.addEventListener('input', debRender);
     maxInput.addEventListener('input', debRender);
-    clearSizeBtn.addEventListener('click', ()=>{ minInput.value=''; maxInput.value=''; debRender(); });
+    clearSizeBtn.addEventListener('click', ()=>{ minInput.value=''; maxInput.value=''; currentPage = 0; debRender(); });
         // make headers sortable (mouse and keyboard, with aria-sort kept in sync)
         const ths = thead.querySelectorAll('th');
         function updateSortAria() {
@@ -1538,6 +1575,7 @@
                     sortState.dir = defaultDirFor(col);
                 }
                 updateSortAria();
+                currentPage = 0;
                 renderRows(search.value);
             };
             h.addEventListener('click', activateSort);
