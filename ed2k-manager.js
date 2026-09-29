@@ -653,7 +653,7 @@
             
     const search = document.createElement('input'); search.className = 'ed2k-rev-search'; search.placeholder = 'Filtrer par nom (ou /regex/flags) ...';
     const selectAllBtn = document.createElement('button'); selectAllBtn.className = 'ed2k-btn ed2k-menu-item'; selectAllBtn.textContent = 'Tout sélectionner';
-    const deselectAllBtn = document.createElement('button'); deselectAllBtn.className = 'ed2k-btn ed2k-menu-item'; deselectAllBtn.textContent = 'Tout déselectionner';
+    const deselectAllBtn = document.createElement('button'); deselectAllBtn.className = 'ed2k-btn ed2k-menu-item'; deselectAllBtn.textContent = 'Tout désélectionner';
     const copyBtn = document.createElement('button'); copyBtn.className = 'ed2k-btn primary'; copyBtn.textContent = 'Copier';
     const copyAllBtn = document.createElement('button'); copyAllBtn.className = 'ed2k-btn'; copyAllBtn.textContent = 'Copier tout';
     const zonePickBtn = document.createElement('button'); zonePickBtn.className = 'ed2k-btn ed2k-icon-btn'; zonePickBtn.textContent = '⌖'; zonePickBtn.title = 'Choisir une zone de la page';
@@ -1126,9 +1126,7 @@
 
         // listeners
         modal.querySelector('#ed2k-master').addEventListener('change', (e) => {
-            const v = e.target.checked;
-            if (!v) selectedLinks.clear();
-            setAllVisible(v);
+            setAllVisible(e.target.checked);
         });
 
         modal.addEventListener('change', (e) => {
