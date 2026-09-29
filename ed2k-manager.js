@@ -331,6 +331,8 @@
         };
     }
 
+    const ED2K_FIELD_SELECTOR = 'textarea, input[type="text"], input[type="search"], input:not([type])';
+
     function findEd2kLinks(root) {
         root = root || document.body;
         const found = new Map(); // key by normalized link
@@ -341,62 +343,86 @@
             if (!found.has(item.link)) found.set(item.link, item);
         }
 
-        // 1) anchors with ed2k hrefs (including percent-encoded pipes)
-        const anchors = [];
-        if (root.nodeType === Node.ELEMENT_NODE && root.matches && root.matches('a[href]')) anchors.push(root);
-        if (root.querySelectorAll) anchors.push(...root.querySelectorAll('a[href]'));
-        anchors.forEach(a => {
-            // Exclude our own UI elements
-            if (a.closest('.ed2k-rev-btn') || a.closest('.ed2k-rev-modal')) return;
-            const href = a.getAttribute('href') || '';
-            if (href.toLowerCase().indexOf(ED2K_PREFIX) !== 0) return;
-            addCandidate(href);
-        });
-
-        // 2) plain text nodes containing ed2k links
-        const walker = document.createTreeWalker(
-            root,
-            NodeFilter.SHOW_TEXT,
-            {
-                acceptNode(node) {
-                    const parent = node.parentElement;
-                    if (!parent) return NodeFilter.FILTER_REJECT;
-                    const tag = parent.tagName ? parent.tagName.toLowerCase() : '';
-                    if (tag === 'script' || tag === 'style' || tag === 'textarea' || tag === 'noscript' || tag === 'input') {
-                        return NodeFilter.FILTER_REJECT;
-                    }
-                    // Exclude our own UI elements (button, modal, badge)
-                    if (parent.closest('.ed2k-rev-btn') || parent.closest('.ed2k-rev-modal')) {
-                        return NodeFilter.FILTER_REJECT;
-                    }
-                    return NodeFilter.FILTER_ACCEPT;
-                }
+        // Scans one subtree (a document/element or a shadow root) for anchors,
+        // text-node links and input/textarea values, then recurses into any open
+        // shadow root it contains so web-component content isn't invisible.
+        // (Closed shadow roots aren't reachable from outside script at all.)
+        function scanSubtree(scanRoot) {
+            if (scanRoot.nodeType === Node.ELEMENT_NODE && scanRoot.shadowRoot) {
+                scanSubtree(scanRoot.shadowRoot);
             }
-        );
-        let node;
-        while ((node = walker.nextNode())) {
-            const text = node.nodeValue;
-            if (!text || text.toLowerCase().indexOf(ED2K_PREFIX) === -1) continue;
-            const matches = text.match(ED2K_CANDIDATE_REGEX);
-            if (!matches) continue;
-            matches.forEach(addCandidate);
+
+            // 1) anchors with ed2k hrefs (including percent-encoded pipes)
+            const anchors = [];
+            if (scanRoot.nodeType === Node.ELEMENT_NODE && scanRoot.matches && scanRoot.matches('a[href]')) anchors.push(scanRoot);
+            if (scanRoot.querySelectorAll) anchors.push(...scanRoot.querySelectorAll('a[href]'));
+            anchors.forEach(a => {
+                // Exclude our own UI elements
+                if (a.closest('.ed2k-rev-btn') || a.closest('.ed2k-rev-modal')) return;
+                const href = a.getAttribute('href') || '';
+                if (href.toLowerCase().indexOf(ED2K_PREFIX) !== 0) return;
+                addCandidate(href);
+            });
+
+            // 2) plain text nodes containing ed2k links; elements are also visited
+            // (without being "accepted") purely to find open shadow roots to recurse into.
+            const walker = document.createTreeWalker(
+                scanRoot,
+                NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
+                {
+                    acceptNode(node) {
+                        if (node.nodeType === Node.ELEMENT_NODE) {
+                            const elTag = node.tagName ? node.tagName.toLowerCase() : '';
+                            if (elTag === 'script' || elTag === 'style' || elTag === 'noscript') return NodeFilter.FILTER_REJECT;
+                            if (node.closest('.ed2k-rev-btn') || node.closest('.ed2k-rev-modal')) return NodeFilter.FILTER_REJECT;
+                            // Must be FILTER_ACCEPT (not SKIP) so nextNode() actually hands the
+                            // element back to us below to check it for a shadow root; children
+                            // are still walked either way, this isn't used as a text candidate.
+                            return NodeFilter.FILTER_ACCEPT;
+                        }
+                        const parent = node.parentElement;
+                        if (!parent) return NodeFilter.FILTER_REJECT;
+                        const tag = parent.tagName ? parent.tagName.toLowerCase() : '';
+                        if (tag === 'script' || tag === 'style' || tag === 'textarea' || tag === 'noscript' || tag === 'input') {
+                            return NodeFilter.FILTER_REJECT;
+                        }
+                        // Exclude our own UI elements (button, modal, badge)
+                        if (parent.closest('.ed2k-rev-btn') || parent.closest('.ed2k-rev-modal')) {
+                            return NodeFilter.FILTER_REJECT;
+                        }
+                        return NodeFilter.FILTER_ACCEPT;
+                    }
+                }
+            );
+            let node;
+            while ((node = walker.nextNode())) {
+                if (node.nodeType === Node.ELEMENT_NODE) {
+                    if (node.shadowRoot) scanSubtree(node.shadowRoot);
+                    continue;
+                }
+                const text = node.nodeValue;
+                if (!text || text.toLowerCase().indexOf(ED2K_PREFIX) === -1) continue;
+                const matches = text.match(ED2K_CANDIDATE_REGEX);
+                if (!matches) continue;
+                matches.forEach(addCandidate);
+            }
+
+            // 3) <input>/<textarea> values: their content is not part of the text-node
+            // tree (especially once the user or the page has changed .value), so the
+            // walker above never sees it and they need a dedicated pass.
+            const valueFields = [];
+            if (scanRoot.nodeType === Node.ELEMENT_NODE && scanRoot.matches && scanRoot.matches(ED2K_FIELD_SELECTOR)) valueFields.push(scanRoot);
+            if (scanRoot.querySelectorAll) valueFields.push(...scanRoot.querySelectorAll(ED2K_FIELD_SELECTOR));
+            valueFields.forEach(field => {
+                if (field.closest('.ed2k-rev-btn') || field.closest('.ed2k-rev-modal')) return;
+                const value = field.value || '';
+                if (!value || value.toLowerCase().indexOf(ED2K_PREFIX) === -1) return;
+                const matches = value.match(ED2K_CANDIDATE_REGEX);
+                if (matches) matches.forEach(addCandidate);
+            });
         }
 
-        // 3) <input>/<textarea> values: their content is not part of the text-node
-        // tree (especially once the user or the page has changed .value), so the
-        // walker above never sees it and they need a dedicated pass.
-        const valueFields = [];
-        const fieldSelector = 'textarea, input[type="text"], input[type="search"], input:not([type])';
-        if (root.nodeType === Node.ELEMENT_NODE && root.matches && root.matches(fieldSelector)) valueFields.push(root);
-        if (root.querySelectorAll) valueFields.push(...root.querySelectorAll(fieldSelector));
-        valueFields.forEach(field => {
-            if (field.closest('.ed2k-rev-btn') || field.closest('.ed2k-rev-modal')) return;
-            const value = field.value || '';
-            if (!value || value.toLowerCase().indexOf(ED2K_PREFIX) === -1) return;
-            const matches = value.match(ED2K_CANDIDATE_REGEX);
-            if (matches) matches.forEach(addCandidate);
-        });
-
+        scanSubtree(root);
         return Array.from(found.values());
     }
 
