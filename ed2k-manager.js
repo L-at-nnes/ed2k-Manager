@@ -1274,8 +1274,6 @@
             const copied = await copyTextToClipboard(links);
             if (!copied) { flashButton(copyBtn, 'Erreur'); return; }
             flashButton(copyBtn, 'Copié!');
-            // close modal after copying selection
-            setTimeout(() => destroy(), 300);
         });
 
         // copy all links (all items, regardless of checkbox)
@@ -1285,7 +1283,6 @@
             const copied = await copyTextToClipboard(links);
             if (!copied) { flashButton(copyAllBtn, 'Erreur'); return; }
             flashButton(copyAllBtn, 'Copié tout!');
-            setTimeout(() => destroy(), 300);
         });
 
         // export CSV
