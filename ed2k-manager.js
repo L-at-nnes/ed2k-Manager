@@ -761,8 +761,16 @@
             return items.filter(it => selectedLinks.has(it.link));
         }
 
+        function markSizeInputValidity(input) {
+            const invalid = !!input.value.trim() && parseSize(input.value) == null;
+            input.style.borderColor = invalid ? '#ff4d4d' : '';
+            input.title = invalid ? 'Taille invalide (ex: 10MB, 10Mo, 1.5GiB)' : '';
+        }
+
         function getFilteredItems(query) {
             const filterFn = makeFilterFromQuery(query || '');
+            markSizeInputValidity(minInput);
+            markSizeInputValidity(maxInput);
             const minBytes = parseSize(minInput.value);
             const maxBytes = parseSize(maxInput.value);
             const filtered = items.filter(it => {
@@ -962,8 +970,8 @@
                 const sizeTd = document.createElement('td'); sizeTd.style.textAlign = 'right';
                 // show size in MB (fixed) and keep raw bytes in tooltip
                 const _bytes_val = parseInt(it.size || 0, 10) || 0;
-                const _mb_display = _bytes_val ? ( (_bytes_val / (1024*1024)).toFixed(2) + ' MB') : '';
-                sizeTd.innerHTML = `<div style='font-weight:600;color:#cfe8f6' title='${_bytes_val} bytes'>${_mb_display}</div>`;
+                const _size_display = _bytes_val ? prettySize(_bytes_val) : '';
+                sizeTd.innerHTML = `<div style='font-weight:600;color:#cfe8f6' title='${_bytes_val} bytes'>${_size_display}</div>`;
                 const linkTd = document.createElement('td'); linkTd.innerHTML = `<a class="ed2k-link" href="${escapeHtml(it.link)}" target="_blank" rel="noopener noreferrer">${escapeHtml(shorten(it.link))}</a>`;
                 tr.appendChild(cbTd); tr.appendChild(tomeTd); tr.appendChild(nameTd); tr.appendChild(sizeTd); tr.appendChild(linkTd);
                 frag.appendChild(tr);
@@ -1456,19 +1464,19 @@
             return it => String(it.name || '').toLowerCase().includes(lower);
         }
 
-        // parse human-friendly size to bytes (supports B, KB, MB, GB, TB)
+        // parse human-friendly size to bytes: B/o, KB/Ko/KiB, MB/Mo/MiB, GB/Go/GiB, TB/To/TiB (case-insensitive)
         function parseSize(str){
             if (!str) return null;
             str = String(str).trim();
             if (!str) return null;
-            const m = str.match(/^([0-9]+(?:[.,][0-9]+)?)\s*(b|kb|mb|gb|tb)?$/i);
+            const m = str.match(/^([0-9]+(?:[.,][0-9]+)?)\s*([kmgt]?i?[bo])?$/i);
             if (!m) return null;
-            let val = parseFloat(m[1].replace(',', '.'));
-            const unit = (m[2] || '').toLowerCase();
-            if (unit === 'tb') return Math.round(val * Math.pow(1024,4));
-            if (unit === 'gb') return Math.round(val * Math.pow(1024,3));
-            if (unit === 'mb') return Math.round(val * Math.pow(1024,2));
-            if (unit === 'kb') return Math.round(val * 1024);
+            const val = parseFloat(m[1].replace(',', '.'));
+            const prefix = (m[2] || '').charAt(0).toLowerCase();
+            if (prefix === 't') return Math.round(val * Math.pow(1024,4));
+            if (prefix === 'g') return Math.round(val * Math.pow(1024,3));
+            if (prefix === 'm') return Math.round(val * Math.pow(1024,2));
+            if (prefix === 'k') return Math.round(val * 1024);
             return Math.round(val);
         }
 
