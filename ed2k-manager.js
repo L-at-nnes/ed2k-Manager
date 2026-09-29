@@ -339,9 +339,17 @@
 
         function addCandidate(rawLink) {
             const item = buildItemFromLink(rawLink);
-            if (!item) return;
+            if (!item) return false;
             if (!found.has(item.link)) found.set(item.link, item);
+            return true;
         }
+
+        // A link split by an inline tag (e.g. "ed2k://|file|<b>Name</b>|123|hash|/")
+        // lands in several separate text nodes, so a single node's regex match can
+        // come back empty or incomplete. Track which parents already got the
+        // flattened-text fallback below so a paragraph full of broken fragments
+        // isn't rescanned once per fragment.
+        const fallbackScannedParents = new WeakSet();
 
         // Scans one subtree (a document/element or a shadow root) for anchors,
         // text-node links and input/textarea values, then recurses into any open
@@ -402,9 +410,17 @@
                 }
                 const text = node.nodeValue;
                 if (!text || text.toLowerCase().indexOf(ED2K_PREFIX) === -1) continue;
-                const matches = text.match(ED2K_CANDIDATE_REGEX);
-                if (!matches) continue;
-                matches.forEach(addCandidate);
+                const matches = text.match(ED2K_CANDIDATE_REGEX) || [];
+                const anyValid = matches.reduce((ok, m) => addCandidate(m) || ok, false);
+                if (anyValid) continue;
+                // The prefix is here but no complete, valid link came out of this text
+                // node alone — it may be split by an inline tag. Fall back once to the
+                // parent element's flattened text (tags stripped, order preserved).
+                const parent = node.parentElement;
+                if (!parent || fallbackScannedParents.has(parent)) continue;
+                fallbackScannedParents.add(parent);
+                const flattened = parent.textContent || '';
+                (flattened.match(ED2K_CANDIDATE_REGEX) || []).forEach(addCandidate);
             }
 
             // 3) <input>/<textarea> values: their content is not part of the text-node
