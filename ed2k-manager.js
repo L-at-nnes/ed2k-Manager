@@ -499,12 +499,11 @@
     .ed2k-rev-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.18);border-radius:999px;border:2px solid transparent;background-clip:padding-box}
     .ed2k-rev-list::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.32);background-clip:padding-box}
     .ed2k-rev-list::-webkit-scrollbar-corner{background:transparent}
-    .ed2k-pagination{display:flex;align-items:center;justify-content:center;gap:12px;padding:8px;border-top:1px solid rgba(255,255,255,0.04)}
-    .ed2k-pagination-info{font-size:12px;color:#bfefff;opacity:0.9}
-    .ed2k-pagination-size{display:flex;align-items:center;gap:6px;font-size:12px;color:#cfe8f6}
-    .ed2k-pagination-size input{width:64px}
+    .ed2k-pagination{display:flex;align-items:center;gap:6px;padding:4px 8px;border-right:1px solid rgba(255,255,255,0.08);margin-right:4px}
+    .ed2k-pagination-info{font-size:11px;color:#bfefff;opacity:0.85;white-space:nowrap}
+    .ed2k-pagination-size{width:52px;padding:5px 6px;font-size:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.02);color:#cfe8f6}
     table.ed2k-table{width:100%;border-collapse:collapse;font-size:13px;color:#cfe8f6}
-    table.ed2k-table th, table.ed2k-table td{padding:10px 8px;border-bottom:1px dashed rgba(255,255,255,0.03);}
+    table.ed2k-table th, table.ed2k-table td{padding:10px 8px;border:none;border-bottom:1px dashed rgba(255,255,255,0.03);}
     table.ed2k-table th{color:#9aa4b2;text-align:left;font-size:12px}
     table.ed2k-table input[type="checkbox"]{width:15px;height:15px;margin:0;accent-color:#2ad0e6;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.25);border-radius:4px;cursor:pointer}
     .ed2k-row-name{color:#e6eef8;font-weight:600}
@@ -1189,19 +1188,18 @@
         table.appendChild(thead); table.appendChild(tbody);
         list.appendChild(table);
 
-        // Pagination bar: kept outside the scrolling list so it stays visible.
+        // Compact pagination cluster, integrated into the footer (left of Réduire/Fermer)
+        // instead of a separate full-width bar.
         const paginationBar = document.createElement('div'); paginationBar.className = 'ed2k-pagination';
-        const prevPageBtn = document.createElement('button'); prevPageBtn.className = 'ed2k-btn'; prevPageBtn.textContent = '‹ Précédent';
-        const pageInfo = document.createElement('span'); pageInfo.className = 'ed2k-pagination-info';
-        const nextPageBtn = document.createElement('button'); nextPageBtn.className = 'ed2k-btn'; nextPageBtn.textContent = 'Suivant ›';
-        prevPageBtn.addEventListener('click', () => { if (currentPage > 0) { currentPage -= 1; renderRows(search.value); } });
-        nextPageBtn.addEventListener('click', () => { currentPage += 1; renderRows(search.value); });
-
-        const pageSizeWrap = document.createElement('label'); pageSizeWrap.className = 'ed2k-pagination-size';
         const pageSizeInput = document.createElement('input');
         pageSizeInput.type = 'number'; pageSizeInput.min = '10'; pageSizeInput.step = '10'; pageSizeInput.value = String(pageSize);
-        pageSizeWrap.appendChild(document.createTextNode('Par page'));
-        pageSizeWrap.appendChild(pageSizeInput);
+        pageSizeInput.className = 'ed2k-pagination-size';
+        pageSizeInput.title = 'Liens par page';
+        const prevPageBtn = document.createElement('button'); prevPageBtn.className = 'ed2k-btn ed2k-icon-btn'; prevPageBtn.textContent = '‹'; prevPageBtn.title = 'Page précédente';
+        const pageInfo = document.createElement('span'); pageInfo.className = 'ed2k-pagination-info';
+        const nextPageBtn = document.createElement('button'); nextPageBtn.className = 'ed2k-btn ed2k-icon-btn'; nextPageBtn.textContent = '›'; nextPageBtn.title = 'Page suivante';
+        prevPageBtn.addEventListener('click', () => { if (currentPage > 0) { currentPage -= 1; renderRows(search.value); } });
+        nextPageBtn.addEventListener('click', () => { currentPage += 1; renderRows(search.value); });
         pageSizeInput.addEventListener('change', () => {
             const next = Math.max(10, parseInt(pageSizeInput.value, 10) || pageSize);
             pageSizeInput.value = String(next);
@@ -1212,7 +1210,7 @@
             renderRows(search.value);
         });
 
-        paginationBar.appendChild(pageSizeWrap);
+        paginationBar.appendChild(pageSizeInput);
         paginationBar.appendChild(prevPageBtn);
         paginationBar.appendChild(pageInfo);
         paginationBar.appendChild(nextPageBtn);
@@ -1240,6 +1238,7 @@
         footerActions.style.display = 'flex';
         footerActions.style.gap = '8px';
         footerActions.style.alignItems = 'center';
+        footerActions.appendChild(paginationBar);
         const minimizeBtn = document.createElement('button'); minimizeBtn.className = 'ed2k-btn'; minimizeBtn.textContent = 'R\u00e9duire';
         minimizeBtn.title = 'Masquer la fen\u00eatre sans perdre les modifications en cours';
         minimizeBtn.addEventListener('click', minimizeModal);
@@ -1251,7 +1250,7 @@
         footer.appendChild(credit);
         footer.appendChild(footerActions);
 
-        modal.appendChild(header); modal.appendChild(renamePanel); modal.appendChild(list); modal.appendChild(paginationBar); modal.appendChild(footer);
+        modal.appendChild(header); modal.appendChild(renamePanel); modal.appendChild(list); modal.appendChild(footer);
         document.body.appendChild(modal);
 
         // helpers
