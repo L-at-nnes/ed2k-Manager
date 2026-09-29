@@ -655,7 +655,7 @@
 
             const toolbar = document.createElement('div'); toolbar.className = 'ed2k-rev-toolbar';
             
-    const search = document.createElement('input'); search.className = 'ed2k-rev-search'; search.placeholder = 'Filtrer par nom (ou /regex/flags) ...';
+    const search = document.createElement('input'); search.className = 'ed2k-rev-search'; search.placeholder = 'Filtrer par nom (ou /regex/flags, hash:...) ...';
     const selectAllBtn = document.createElement('button'); selectAllBtn.className = 'ed2k-btn ed2k-menu-item'; selectAllBtn.textContent = 'Tout sélectionner';
     const deselectAllBtn = document.createElement('button'); deselectAllBtn.className = 'ed2k-btn ed2k-menu-item'; deselectAllBtn.textContent = 'Tout désélectionner';
     const copyBtn = document.createElement('button'); copyBtn.className = 'ed2k-btn primary'; copyBtn.textContent = 'Copier';
@@ -1424,6 +1424,13 @@
         function makeFilterFromQuery(q){
             if (!q) return () => true;
             q = q.trim();
+            // Explicit "hash:" prefix searches the ed2k hash instead of the name.
+            const hashMatch = q.match(/^hash:\s*(.*)$/i);
+            if (hashMatch) {
+                const needle = hashMatch[1].trim().toLowerCase();
+                if (!needle) return () => true;
+                return it => String(it.hash || '').toLowerCase().includes(needle);
+            }
             if (q.startsWith('/') && q.lastIndexOf('/')>0){
                 const last = q.lastIndexOf('/');
                 const pattern = q.slice(1,last);
@@ -1435,17 +1442,18 @@
                     return it => {
                         try {
                             if (re.global) re.lastIndex = 0;
-                            return re.test(String(it.name || '')) || re.test(String(it.link || ''));
+                            return re.test(String(it.name || ''));
                         } catch (e) { return false; }
                     };
                 } catch(e){
                     const lowerErr = q.toLowerCase();
-                    return it => String(it.name || '').toLowerCase().includes(lowerErr) || String(it.link || '').toLowerCase().includes(lowerErr);
+                    return it => String(it.name || '').toLowerCase().includes(lowerErr);
                 }
             }
             const lower = q.toLowerCase();
-            // match both the decoded name and the raw link (so numbers inside the link are also found)
-            return it => String(it.name || '').toLowerCase().includes(lower) || String(it.link || '').toLowerCase().includes(lower);
+            // match the decoded name only; the raw link (hash, size, %-encoding) is
+            // not searched so numbers/letters inside it don't cause false matches.
+            return it => String(it.name || '').toLowerCase().includes(lower);
         }
 
         // parse human-friendly size to bytes (supports B, KB, MB, GB, TB)
