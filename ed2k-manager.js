@@ -125,13 +125,17 @@
     // some sites emit raw Latin-1 bytes (e.g. "Caf%E9"), which is not valid UTF-8
     // and would otherwise throw and fall back to the undecoded, unreadable text.
     function decodeFileName(raw) {
+        const s = String(raw || '').replace(/\+/g, ' ');
         try {
-            // some names are URL-encoded
-            let s = raw.replace(/\+/g, ' ');
-            s = decodeURIComponent(s);
-            s = s.replace(/\s+/g, ' ').trim();
-            return s;
-        } catch (e) { return raw; }
+            const bytes = bytesFromPercentEncoded(s);
+            try {
+                return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+            } catch (e) {
+                return new TextDecoder('windows-1252').decode(bytes);
+            }
+        } catch (e) {
+            try { return decodeURIComponent(s); } catch (e2) { return raw; }
+        }
     }
 
     function safeDecodeURIComponent(value) {
