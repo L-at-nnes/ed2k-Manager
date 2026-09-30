@@ -23,9 +23,9 @@ ed2k Manager is a lightweight userscript for Tampermonkey or Violentmonkey that 
 - The results table is paginated (1,000 rows at a time by default, adjustable via the compact page-size field next to `Réduire`/`Fermer`) so pages with 10,000+ links stay smooth to search, filter and sort; `Copier tout`/exports still cover every filtered match across all pages, while `Sélectionner` bulk actions apply to the current page (use Shift+click or navigate page by page for a range spanning more than one page).
 - Search by name (plain text or `/regex/flags`), or prefix your query with `hash:` to search by ed2k hash instead.
 - A live selection counter in the header so you always see how many links are checked.
-- Copy helpers for the checked links or for the currently filtered list, plus exports to CSV (`name,size,link`, UTF-8 with BOM, safe against spreadsheet formula injection) and `.emulecollection` (exports use the selection when it exists, otherwise the filtered list; you're warned before anything over 1024 links gets truncated).
-- Automatic decoding of encoded filenames (with a Latin-1 fallback for the rare non-UTF-8 name) and readable size displays in B/KB/MB/GB/TB, with exact bytes in the tooltip; size filters accept `10MB`, `2GB`, `10Mo`, `1.5GiB`, etc.
-- Context menu (right click the launcher button) to reposition or resize the button and reset preferences; Tampermonkey menu commands let you reopen the panel or toggle the button's visibility even when it's hidden.
+- Copy helpers for the checked links or for the whole list, plus exports to CSV (`name,size,link`) and `.emulecollection` (exports use the selection when it exists, otherwise the full list).
+- Automatic decoding of encoded filenames along with readable size displays (bytes are shown in the tooltip for accuracy).
+- Context menu (right click the launcher button) to reposition or resize the button and reset preferences.
 - Fully documented codebase in English so outside contributors can understand the logic quickly.
 
 ## Requirements
