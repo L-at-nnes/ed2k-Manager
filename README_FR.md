@@ -21,6 +21,9 @@ ed2k Manager est un userscript leger pour Tampermonkey ou Violentmonkey. Il insp
 - Import de gros fichiers optimisé avec parsing en arrière-plan pour charger plus facilement des listes de 10k hash et plus.
 - Barre d'actions simplifiée et plus claire : menu `Selectionner` pour les actions de selection, boutons directs `Copier` + `Tout copier (N)` (le compteur et les deux actions suivent votre recherche/filtre en cours), et menu `Exporter` pour CSV et `.emulecollection`.
 - Le tableau de resultats est pagine (1000 lignes a la fois par defaut, ajustable via le champ compact a cote de `Reduire`/`Fermer`) pour que les pages avec 10 000+ liens restent fluides a rechercher, filtrer et trier ; `Copier tout`/les exports couvrent toujours tous les liens filtres sur toutes les pages, tandis que les actions de `Selectionner` s'appliquent a la page courante (Shift+clic ou navigation page par page pour une plage plus large).
+- **Copie par paquets** optionnelle : choisissez `Paquets de 200 / 500 / 2000` a cote de `Copier tout` et chaque clic copie le paquet suivant (`Copier paquet 2/5`), pour rester sous la limite d'environ 500 lignes du journal d'eMule et verifier chaque paquet avant de lancer le suivant ; la taille est memorisee et le curseur repart de zero quand la liste filtree change.
+- Case optionnelle **`Fermer apres Copier tout`** (desactivee par defaut, memorisee) : ferme la fenetre apres un `Copier tout` reussi (apres le dernier paquet si la copie par paquets est active).
+- Le selecteur de zone (`⌖`) accepte aussi la **selection par glisser** : maintenez le clic gauche et tracez un rectangle sur la page pour prendre tous les liens ed2k qu'il touche, meme s'ils sont tous dans le meme bloc HTML sans structure pour les separer.
 - Recherche par nom (texte simple ou `/regex/flags`), ou prefixez avec `hash:` pour rechercher par hash ed2k.
 - Compteur de selection en direct dans l'entete pour voir immediatement combien de liens sont coches.
 - Boutons de copie pour la selection ou pour la liste filtree, ainsi qu'un export CSV (`name,size,link`, UTF-8 avec BOM, protege contre l'injection de formule dans un tableur) et `.emulecollection` (les exports utilisent la selection si elle existe, sinon la liste filtree ; un avertissement s'affiche avant toute troncature au-dela de 1024 liens).
@@ -60,7 +63,8 @@ Tampermonkey vérifie automatiquement les nouvelles versions sur GitHub. Aucune 
 7. Cochez des lignes individuellement, utilisez **Shift+clic** pour une selection par plage, ou cliquez directement sur un nom de fichier pour cocher/decocher et copier ce lien.
 8. Utilisez **Copier** pour la selection courante et **Tout copier (N)** pour copier tous les liens actuellement affiches par votre filtre/recherche.
 9. Ouvrez **Exporter** (menu deroulant) pour exporter en CSV (`ed2k-links.csv`) ou en `.emulecollection` (selection si presente, sinon la liste filtree).
-10. Fermez la fenetre avec **Fermer**, la touche **Esc** ou en recliquant sur le bouton — copier des liens ne ferme plus automatiquement la fenetre, vous pouvez donc continuer a travailler sur votre selection ensuite.
+10. Fermez la fenetre avec **Fermer**, la touche **Esc** ou en recliquant sur le bouton — copier des liens ne ferme plus automatiquement la fenetre, vous pouvez donc continuer a travailler sur votre selection ensuite (sauf si vous cochez `Fermer apres Copier tout`).
+11. Pour ne prendre qu'une partie d'une page, cliquez sur le selecteur de zone `⌖` : survolez et utilisez la molette pour elargir/reduire la zone detectee puis cliquez, ou maintenez le clic gauche et tracez un rectangle autour des liens voulus.
 
 ## Mises à jour automatiques
 Le script est distribué via GitHub. Tampermonkey compare régulièrement votre copie locale à la version officielle et l'actualise automatiquement. Tant que l'userscript est actif, vous recevez les correctifs et améliorations sans intervention manuelle.
