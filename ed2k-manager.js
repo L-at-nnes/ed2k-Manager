@@ -503,7 +503,7 @@
     .ed2k-pagination-info{font-size:11px;color:#bfefff;opacity:0.85;white-space:nowrap}
     .ed2k-pagination-label{font-size:11px;color:#9aa4b2;white-space:nowrap}
     .ed2k-pagination-size{width:52px;padding:5px 6px;font-size:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.02);color:#cfe8f6}
-    table.ed2k-table{width:100%;border-collapse:collapse;font-size:13px;color:#cfe8f6}
+    table.ed2k-table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:13px;color:#cfe8f6}
     table.ed2k-table th, table.ed2k-table td{padding:10px 8px;border:none;border-bottom:1px dashed rgba(255,255,255,0.03);}
     table.ed2k-table th{color:#9aa4b2;text-align:left;font-size:12px}
     table.ed2k-table input[type="checkbox"]{width:15px;height:15px;margin:0;accent-color:#2ad0e6;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.25);border-radius:4px;cursor:pointer}
@@ -512,7 +512,8 @@
     .ed2k-btn{padding:6px 10px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04);color:#cfe8f6;cursor:pointer}
     .ed2k-btn.primary{background:linear-gradient(90deg,#5fd6f6,#60a5fa);color:#022;border:none}
     .ed2k-empty{padding:28px;text-align:center;color:#9aa4b2}
-    a.ed2k-link{color:#7dd3fc;text-decoration:none}
+    a.ed2k-link{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#7dd3fc;text-decoration:none}
+    .ed2k-btn option{background:#062a3a;color:#e6fbff}
     .ed2k-zone-highlight{position:fixed;z-index:9999996;border:2px solid #5fd6f6;background:rgba(95,214,246,0.08);box-shadow:0 0 0 99999px rgba(2,6,23,0.20);pointer-events:none;border-radius:6px}
     .ed2k-zone-tip{position:fixed;z-index:9999997;padding:7px 10px;border-radius:8px;background:rgba(2,17,27,0.96);border:1px solid rgba(255,255,255,0.12);color:#e6fbff;font:12px system-ui,Segoe UI,Roboto,Arial;pointer-events:none;box-shadow:0 8px 24px rgba(0,0,0,0.35)}
 
@@ -1034,7 +1035,7 @@
         const list = document.createElement('div'); list.className = 'ed2k-rev-list';
 
     const table = document.createElement('table'); table.className = 'ed2k-table';
-    const thead = document.createElement('thead'); thead.innerHTML = '<tr><th style="width:36px"><input type="checkbox" id="ed2k-master" aria-label="Tout sélectionner / désélectionner"></th><th data-col="tome" style="width:60px;text-align:center">Tome</th><th data-col="name">Nom</th><th data-col="size" style="width:120px;text-align:right">Taille</th><th style="width:360px">Lien</th></tr>';
+    const thead = document.createElement('thead'); thead.innerHTML = '<tr><th style="width:36px"><input type="checkbox" id="ed2k-master" aria-label="Tout sélectionner / désélectionner"></th><th data-col="tome" style="width:60px;text-align:center">Tome</th><th data-col="name">Nom</th><th data-col="size" style="width:120px;text-align:right">Taille</th><th style="width:240px">Lien</th></tr>';
         const tbody = document.createElement('tbody');
 
         // Selection state persists across re-renders and enables Shift+click range selection.
