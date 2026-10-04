@@ -97,7 +97,7 @@
     // keep only button visibility + hash memory mode in prefs; theme fixed to ocean.
     // Defaults apply immediately; the real values are loaded from GM storage
     // asynchronously (see initPrefsFromStorage) and re-applied once available.
-    const prefs = { showButton: true, btnPos: 'bottom-right', hashMemoryMode: 'session', pageSize: 1000 };
+    const prefs = { showButton: true, btnPos: 'bottom-right', hashMemoryMode: 'session', pageSize: 1000, closeAfterCopyAll: false };
 
     // ed2k detection: capture full candidates, then normalize/parse
     const ED2K_PREFIX = 'ed2k://';
@@ -861,8 +861,20 @@
     dedupLabel.appendChild(dedupCheckbox);
     dedupLabel.appendChild(document.createTextNode(' Dédupliquer (hash)'));
 
+    const closeAfterCopyLabel = document.createElement('label'); closeAfterCopyLabel.className = 'ed2k-filter-toggle';
+    const closeAfterCopyCheckbox = document.createElement('input'); closeAfterCopyCheckbox.type = 'checkbox';
+    closeAfterCopyCheckbox.checked = !!prefs.closeAfterCopyAll;
+    closeAfterCopyLabel.title = 'Fermer la fenêtre après « Copier tout »';
+    closeAfterCopyLabel.appendChild(closeAfterCopyCheckbox);
+    closeAfterCopyLabel.appendChild(document.createTextNode(' Fermer après Copier tout'));
+    closeAfterCopyCheckbox.addEventListener('change', () => {
+        prefs.closeAfterCopyAll = closeAfterCopyCheckbox.checked;
+        savePrefs();
+    });
+
     filterOptionsRow.appendChild(newOnlyLabel);
     filterOptionsRow.appendChild(dedupLabel);
+    filterOptionsRow.appendChild(closeAfterCopyLabel);
 
     toolbar.appendChild(search);
     // put size filters next to search
@@ -1647,6 +1659,7 @@
             const copied = await copyTextToClipboard(links);
             if (!copied) { flashButton(copyAllBtn, 'Erreur'); return; }
             flashButton(copyAllBtn, 'Copié tout!');
+            if (prefs.closeAfterCopyAll) setTimeout(() => destroy(), 300);
         });
 
         // export CSV
