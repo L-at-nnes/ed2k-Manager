@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ed2k Manager
 // @namespace    https://github.com/L-at-nnes/ed2k-Manager
-// @version      1.5.0
+// @version      1.6.0
 // @description  Reveal ed2k links on any page with robust decoding, advanced tome extraction, and external hash comparison.
 // @author       L@nnes
 // @homepageURL  https://github.com/L-at-nnes/ed2k-Manager
