@@ -97,7 +97,7 @@
     // keep only button visibility + hash memory mode in prefs; theme fixed to ocean.
     // Defaults apply immediately; the real values are loaded from GM storage
     // asynchronously (see initPrefsFromStorage) and re-applied once available.
-    const prefs = { showButton: true, btnPos: 'bottom-right', hashMemoryMode: 'session', pageSize: 1000, closeAfterCopyAll: false };
+    const prefs = { showButton: true, btnPos: 'bottom-right', hashMemoryMode: 'session', pageSize: 1000, closeAfterCopyAll: false, copyChunkSize: 0 };
 
     // ed2k detection: capture full candidates, then normalize/parse
     const ED2K_PREFIX = 'ed2k://';
@@ -828,6 +828,15 @@
     // 10k+ link page no longer rebuilds thousands of <tr> elements. User-configurable
     // (see pageSizeInput below), remembered via prefs.
     let pageSize = Math.max(10, parseInt(prefs.pageSize, 10) || 1000);
+    const COPY_CHUNK_SIZES = [200, 500, 2000];
+    let copyChunkSize = COPY_CHUNK_SIZES.includes(prefs.copyChunkSize) ? prefs.copyChunkSize : 0;
+    const copyChunkSelect = document.createElement('select'); copyChunkSelect.className = 'ed2k-btn';
+    copyChunkSelect.title = 'Copier tout par paquets de N liens';
+    [[0, 'Tout d’un coup'], ...COPY_CHUNK_SIZES.map(n => [n, `Paquets de ${n}`])].forEach(([value, label]) => {
+        const opt = document.createElement('option'); opt.value = String(value); opt.textContent = label;
+        copyChunkSelect.appendChild(opt);
+    });
+    copyChunkSelect.value = String(copyChunkSize);
     const itemByLink = new Map(items.map(it => [it.link, it]));
 
     const memoryModeWrap = document.createElement('div'); memoryModeWrap.className = 'ed2k-mode-wrap';
@@ -886,6 +895,7 @@
     toolbar.appendChild(selectNewBtn);
     toolbar.appendChild(copyBtn);
     toolbar.appendChild(copyAllBtn);
+    toolbar.appendChild(copyChunkSelect);
     toolbar.appendChild(zonePickBtn);
     toolbar.appendChild(renameToggleBtn);
     toolbar.appendChild(exportMenuWrap);
@@ -930,6 +940,16 @@
         const selectedLinks = new Set();
         let lastClickedLink = null;
         let currentVisibleItems = [];
+        // chunked copy: "Copier tout" copies the next N links per click (0 = everything),
+        // so eMule's ~500-line log limit doesn't hide whether a batch was fully processed.
+        let copyChunkCursor = 0;
+        let copyChunkSig = '';
+        function refreshCopyAllLabel() {
+            const n = currentVisibleItems.length;
+            if (!copyChunkSize || n <= copyChunkSize) { copyAllBtn.textContent = `Copier tout (${n})`; return; }
+            const total = Math.ceil(n / copyChunkSize);
+            copyAllBtn.textContent = `Copier paquet ${Math.floor(copyChunkCursor / copyChunkSize) + 1}/${total} (${n})`;
+        }
         const renameHistory = [];
 
         function getVisibleCheckboxes() {
@@ -1116,7 +1136,9 @@
             currentVisibleItems = filtered;
             // update title count dynamically
             try { title.textContent = `ed2k — ${filtered.length} trouvé(s)`; } catch(e){}
-            try { copyAllBtn.textContent = `Copier tout (${filtered.length})`; } catch(e){}
+            const chunkSig = `${filtered.length}|${filtered.length ? filtered[0].link : ''}|${filtered.length ? filtered[filtered.length - 1].link : ''}`;
+            if (chunkSig !== copyChunkSig) { copyChunkSig = chunkSig; copyChunkCursor = 0; }
+            try { refreshCopyAllLabel(); } catch(e){}
             updateRenameStatus();
 
             const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -1654,12 +1676,34 @@
 
         // copy all links currently visible (filtered), regardless of checkbox
         copyAllBtn.addEventListener('click', async () => {
-            const links = currentVisibleItems.map(it => it.link).join('\n');
+            const n = currentVisibleItems.length;
+            const chunked = copyChunkSize > 0 && n > copyChunkSize;
+            if (chunked && copyChunkCursor >= n) copyChunkCursor = 0;
+            const batch = chunked ? currentVisibleItems.slice(copyChunkCursor, copyChunkCursor + copyChunkSize) : currentVisibleItems;
+            const links = batch.map(it => it.link).join('\n');
             if (!links) { flashButton(copyAllBtn, 'Aucun lien'); return; }
             const copied = await copyTextToClipboard(links);
             if (!copied) { flashButton(copyAllBtn, 'Erreur'); return; }
-            flashButton(copyAllBtn, 'Copié tout!');
-            if (prefs.closeAfterCopyAll) setTimeout(() => destroy(), 300);
+            let done = true;
+            let flashText = 'Copié tout!';
+            if (chunked) {
+                const idx = Math.floor(copyChunkCursor / copyChunkSize) + 1;
+                flashText = `Paquet ${idx}/${Math.ceil(n / copyChunkSize)} copié`;
+                copyChunkCursor += copyChunkSize;
+                done = copyChunkCursor >= n;
+                if (done) copyChunkCursor = 0;
+                refreshCopyAllLabel();
+            }
+            flashButton(copyAllBtn, flashText);
+            if (done && prefs.closeAfterCopyAll) setTimeout(() => destroy(), 300);
+        });
+
+        copyChunkSelect.addEventListener('change', () => {
+            copyChunkSize = parseInt(copyChunkSelect.value, 10) || 0;
+            copyChunkCursor = 0;
+            prefs.copyChunkSize = copyChunkSize;
+            savePrefs();
+            refreshCopyAllLabel();
         });
 
         // export CSV
