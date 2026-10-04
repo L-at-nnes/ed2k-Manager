@@ -453,7 +453,7 @@
     .ed2k-rev-btn svg{filter:drop-shadow(0 1px 0 rgba(255,255,255,0.06));}
     .ed2k-logo{font-weight:800;color:#022;letter-spacing:0.6px;font-family:Inter,Segoe UI,Roboto,Arial;font-size:16px;background:linear-gradient(90deg,#e6fbff,#7dd3fc);-webkit-background-clip:text;background-clip:text;color:transparent;text-transform:lowercase}
     .ed2k-rev-btn .ed2k-logo-wrap{display:flex;align-items:center;justify-content:center;width:100%;height:100%;border-radius:50%;background:radial-gradient(circle at 30% 30%, rgba(255,255,255,0.12), transparent 40%);}
-    .ed2k-rev-modal{position:fixed;right:24px;bottom:88px;z-index:9999998;width:880px;max-width:calc(100% - 48px);max-height:80vh;background:#07101a;border-radius:12px;padding:14px;box-shadow:0 20px 60px rgba(2,6,23,0.8);overflow:hidden;display:flex;flex-direction:column;color:#e6eef8;font-family:system-ui,Segoe UI,Roboto,Arial}
+    .ed2k-rev-modal{position:fixed;right:24px;bottom:88px;z-index:9999998;width:880px;max-width:calc(100% - 48px);max-height:80vh;background:#07101a;border-radius:12px;padding:14px;box-shadow:0 20px 60px rgba(2,6,23,0.8);overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;color:#e6eef8;font-family:system-ui,Segoe UI,Roboto,Arial}
     .ed2k-rev-modal.minimized{display:none}
     .ed2k-rev-header{display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.04);flex-wrap:wrap} 
     .ed2k-rev-title{font-weight:700;color:#7dd3fc;font-size:14px}
@@ -493,7 +493,7 @@
     .ed2k-rename-preview-arrow{color:#7dd3fc;flex:none}
     .ed2k-rename-preview-new{color:#8fe7ff;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .ed2k-rename-preview-more{font-size:11px;color:#9aa4b2}
-    .ed2k-rev-list{overflow:auto;padding:8px;flex:1;background:transparent;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.25) transparent}
+    .ed2k-rev-list{overflow:auto;padding:8px;flex:1;min-height:140px;background:transparent;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.25) transparent}
     .ed2k-rev-list::-webkit-scrollbar{width:10px;height:10px}
     .ed2k-rev-list::-webkit-scrollbar-track{background:transparent}
     .ed2k-rev-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.18);border-radius:999px;border:2px solid transparent;background-clip:padding-box}
