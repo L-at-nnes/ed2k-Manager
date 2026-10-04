@@ -21,6 +21,9 @@ ed2k Manager is a lightweight userscript for Tampermonkey or Violentmonkey that 
 - Large import handling is optimized with background parsing so files containing 10k+ hashes remain smooth to load.
 - Cleaner top toolbar with clear priorities: `Sélectionner` dropdown for bulk selection helpers, direct `Copier` + `Tout copier (N)` buttons (the count and both actions follow your current filter/search), and an `Exporter` dropdown for CSV and `.emulecollection`.
 - The results table is paginated (1,000 rows at a time by default, adjustable via the compact page-size field next to `Réduire`/`Fermer`) so pages with 10,000+ links stay smooth to search, filter and sort; `Copier tout`/exports still cover every filtered match across all pages, while `Sélectionner` bulk actions apply to the current page (use Shift+click or navigate page by page for a range spanning more than one page).
+- Optional **chunked copy**: pick `Paquets de 200 / 500 / 2000` next to `Copier tout` and each click copies the next batch (`Copier paquet 2/5`), so you can stay under eMule's ~500-line log limit and verify each batch before launching the next; the batch size is remembered, and the cursor resets when the filtered list changes.
+- Optional **`Fermer après Copier tout`** checkbox (off by default, remembered): closes the window once `Copier tout` succeeds (after the last batch when chunked copy is on).
+- Zone picker (`⌖`) also supports a **drag selection**: hold the left mouse button and drag a rectangle over the page to pick every ed2k link it touches, even when they all sit in the same HTML block with no structure separating them.
 - Search by name (plain text or `/regex/flags`), or prefix your query with `hash:` to search by ed2k hash instead.
 - A live selection counter in the header so you always see how many links are checked.
 - Copy helpers for the checked links or for the currently filtered list, plus exports to CSV (`name,size,link`, UTF-8 with BOM, safe against spreadsheet formula injection) and `.emulecollection` (exports use the selection when it exists, otherwise the filtered list; you're warned before anything over 1024 links gets truncated).
@@ -60,7 +63,8 @@ Tampermonkey automatically checks GitHub for new releases, so you do not need to
 7. Select individual rows manually, use **Shift+click** to select a range, or click directly on a file name to toggle selection and copy that single link.
 8. Use **Copier** for the current selection and **Tout copier (N)** for every link currently shown by your filter/search.
 9. Open **Exporter** (dropdown) to export as `ed2k-links.csv` or `.emulecollection` (exports use the selection when it exists, otherwise the filtered list).
-10. Close the window by clicking **Fermer**, pressing **Esc**, or toggling the launcher button again — copying links no longer closes the window, so you can keep working with your selection afterward.
+10. Close the window by clicking **Fermer**, pressing **Esc**, or toggling the launcher button again — copying links no longer closes the window (unless you enable `Fermer après Copier tout`), so you can keep working with your selection afterward.
+11. To grab only part of a page, click the `⌖` zone picker: hover and use the mouse wheel to widen/narrow the detected zone then click, or hold the left button and drag a rectangle around exactly the links you want.
 
 ## Automatic Updates
 The script is served directly from GitHub. Tampermonkey checks the canonical URL on a schedule and replaces the local copy whenever a new version is published. As long as the userscript is enabled, you will silently receive the latest UI tweaks and bug fixes.
