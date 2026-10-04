@@ -597,6 +597,42 @@
         return true;
     }
 
+    // Links whose on-screen box intersects `rect` (viewport coords), independent of
+    // DOM nesting: lets a rubber-band pick a sub-range of links that share one block.
+    function findEd2kLinksInRect(rect) {
+        const hits = new Map();
+        const intersects = (r) => r.width + r.height > 0 && r.right >= rect.left && r.left <= rect.right && r.bottom >= rect.top && r.top <= rect.bottom;
+        const add = (raw) => { const it = buildItemFromLink(raw); if (it && !hits.has(it.link)) hits.set(it.link, it); };
+        document.querySelectorAll('a[href]').forEach(a => {
+            if (a.closest('.ed2k-rev-btn') || a.closest('.ed2k-rev-modal')) return;
+            const href = a.getAttribute('href') || '';
+            if (href.toLowerCase().indexOf(ED2K_PREFIX) !== 0) return;
+            if (Array.from(a.getClientRects()).some(intersects)) add(href);
+        });
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+            acceptNode(node) {
+                const parent = node.parentElement;
+                if (!parent || !node.nodeValue || node.nodeValue.toLowerCase().indexOf(ED2K_PREFIX) === -1) return NodeFilter.FILTER_REJECT;
+                if (/^(script|style|textarea|noscript|input)$/i.test(parent.tagName)) return NodeFilter.FILTER_REJECT;
+                if (parent.closest('.ed2k-rev-btn') || parent.closest('.ed2k-rev-modal')) return NodeFilter.FILTER_REJECT;
+                return NodeFilter.FILTER_ACCEPT;
+            }
+        });
+        let node;
+        while ((node = walker.nextNode())) {
+            const text = node.nodeValue;
+            const re = new RegExp(ED2K_CANDIDATE_REGEX.source, 'gi');
+            let m;
+            while ((m = re.exec(text))) {
+                const range = document.createRange();
+                range.setStart(node, m.index);
+                range.setEnd(node, m.index + m[0].length);
+                if (Array.from(range.getClientRects()).some(intersects)) add(m[0]);
+            }
+        }
+        return Array.from(hits.values());
+    }
+
     function startZonePicker() {
         const previousModal = modal && document.body.contains(modal) ? modal : null;
         const countCache = new WeakMap();
@@ -607,12 +643,19 @@
         let currentCandidates = [];
         let currentCandidateIndex = 0;
         let lastTarget = null;
+        let dragStart = null;
+        let dragging = false;
+        let suppressClick = false;
+        const band = document.createElement('div');
+        band.className = 'ed2k-zone-highlight';
+        band.style.display = 'none';
 
         highlight.className = 'ed2k-zone-highlight';
         tip.className = 'ed2k-zone-tip';
-        tip.textContent = 'Survole une zone contenant des liens ed2k';
+        tip.textContent = 'Survole une zone contenant des liens ed2k, ou maintiens le clic et glisse pour encadrer des liens';
         document.body.appendChild(highlight);
         document.body.appendChild(tip);
+        document.body.appendChild(band);
         if (previousModal) minimizeModal();
 
         function cachedCount(el) {
@@ -668,17 +711,72 @@
         function cleanup(restorePrevious) {
             document.removeEventListener('mousemove', onMouseMove, true);
             document.removeEventListener('click', onClick, true);
+            document.removeEventListener('mousedown', onMouseDown, true);
+            document.removeEventListener('mouseup', onMouseUp, true);
             document.removeEventListener('keydown', onKeyDown, true);
             document.removeEventListener('wheel', onWheel, true);
             document.removeEventListener('touchstart', onTouchStart, true);
             document.removeEventListener('touchmove', onTouchMove, true);
             document.removeEventListener('touchend', onTouchEnd, true);
             clearTimeout(longPressTimer);
-            try { highlight.remove(); tip.remove(); } catch (e) {}
+            try { highlight.remove(); tip.remove(); band.remove(); } catch (e) {}
             if (restorePrevious && previousModal && document.body.contains(previousModal)) restoreModal();
         }
 
+        function bandRect(evt) {
+            return {
+                left: Math.min(dragStart.x, evt.clientX), right: Math.max(dragStart.x, evt.clientX),
+                top: Math.min(dragStart.y, evt.clientY), bottom: Math.max(dragStart.y, evt.clientY),
+            };
+        }
+
+        function onMouseDown(evt) {
+            if (evt.button !== 0) return;
+            if (evt.target && evt.target.closest && (evt.target.closest('.ed2k-rev-btn') || evt.target.closest('.ed2k-rev-modal'))) return;
+            // Stops the browser from starting a native link/text drag, which would swallow mousemove/mouseup.
+            evt.preventDefault();
+            dragStart = { x: evt.clientX, y: evt.clientY };
+            dragging = false;
+        }
+
+        function onMouseUp(evt) {
+            if (!dragStart) return;
+            const wasDragging = dragging;
+            const rect = wasDragging ? bandRect(evt) : null;
+            dragStart = null;
+            dragging = false;
+            band.style.display = 'none';
+            if (!wasDragging) return;
+            evt.preventDefault();
+            evt.stopPropagation();
+            suppressClick = true;
+            setTimeout(() => { suppressClick = false; }, 0);
+            const picked = findEd2kLinksInRect(rect);
+            if (!picked.length) {
+                tip.textContent = 'Aucun lien ed2k dans la zone encadrée';
+                return;
+            }
+            cleanup(false);
+            buildModal(picked);
+        }
+
         function onMouseMove(evt) {
+            if (dragStart) {
+                if (!dragging && Math.hypot(evt.clientX - dragStart.x, evt.clientY - dragStart.y) < 6) return;
+                dragging = true;
+                evt.preventDefault();
+                try { window.getSelection().removeAllRanges(); } catch (e) {}
+                const r = bandRect(evt);
+                highlight.style.display = 'none';
+                band.style.display = 'block';
+                band.style.left = `${r.left}px`; band.style.top = `${r.top}px`;
+                band.style.width = `${r.right - r.left}px`; band.style.height = `${r.bottom - r.top}px`;
+                const picked = findEd2kLinksInRect(r).length;
+                tip.style.left = `${Math.min(window.innerWidth - 260, Math.max(8, r.left))}px`;
+                tip.style.top = `${Math.max(8, r.top - 36)}px`;
+                tip.textContent = `${picked} lien(s) ed2k encadré(s) - relâche pour valider, Esc pour annuler`;
+                return;
+            }
             const target = evt.target;
             if (!target || target === lastTarget || !target.closest) return;
             lastTarget = target;
@@ -699,6 +797,7 @@
         function onClick(evt) {
             evt.preventDefault();
             evt.stopPropagation();
+            if (suppressClick) return;
             if (!currentCandidate || !currentItems.length) {
                 tip.textContent = 'Choisis une zone contenant des liens ed2k';
                 return;
@@ -750,6 +849,8 @@
 
         document.addEventListener('mousemove', onMouseMove, true);
         document.addEventListener('click', onClick, true);
+        document.addEventListener('mousedown', onMouseDown, true);
+        document.addEventListener('mouseup', onMouseUp, true);
         document.addEventListener('keydown', onKeyDown, true);
         document.addEventListener('wheel', onWheel, { capture: true, passive: false });
         document.addEventListener('touchstart', onTouchStart, true);
