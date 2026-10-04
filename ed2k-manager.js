@@ -1138,11 +1138,16 @@
                 nameDiv.title = 'Cliquer pour copier le lien';
                 nameDiv.addEventListener('click', async (evt) => {
                     const selectedText = String(window.getSelection ? window.getSelection().toString() : '');
-                    if (renamePanel.classList.contains('open') && selectedText.trim() && it.name.includes(selectedText)) {
-                        renameFindInput.value = selectedText;
-                        updateRenameStatus();
+                    if (renamePanel.classList.contains('open') && selectedText.trim()) {
+                        // Prefer the exact selection (keeps deliberate edge spaces), fall back to trimmed.
+                        const matched = it.name.includes(selectedText) ? selectedText
+                            : (it.name.includes(selectedText.trim()) ? selectedText.trim() : null);
                         evt.preventDefault();
                         evt.stopPropagation();
+                        if (matched !== null) {
+                            renameFindInput.value = matched;
+                            updateRenameStatus();
+                        }
                         return;
                     }
                     cb.checked = !cb.checked;
