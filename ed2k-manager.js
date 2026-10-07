@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ed2k Manager
 // @namespace    https://github.com/L-at-nnes/ed2k-Manager
-// @version      1.6.0
+// @version      1.6.1
 // @description  Reveal ed2k links on any page with robust decoding, advanced tome extraction, and external hash comparison.
 // @author       L@nnes
 // @homepageURL  https://github.com/L-at-nnes/ed2k-Manager
@@ -646,6 +646,9 @@
         let lastTarget = null;
         let dragStart = null;
         let dragging = false;
+        let lastMouse = { x: 0, y: 0 };
+        let scrollRaf = 0;
+        let lastCountAt = 0;
         let suppressClick = false;
         const band = document.createElement('div');
         band.className = 'ed2k-zone-highlight';
@@ -720,15 +723,49 @@
             document.removeEventListener('touchmove', onTouchMove, true);
             document.removeEventListener('touchend', onTouchEnd, true);
             clearTimeout(longPressTimer);
+            cancelAnimationFrame(scrollRaf);
             try { highlight.remove(); tip.remove(); band.remove(); } catch (e) {}
             if (restorePrevious && previousModal && document.body.contains(previousModal)) restoreModal();
         }
 
-        function bandRect(evt) {
+        // dragStart is in document coords, so the band keeps covering links scrolled out of view.
+        function bandRect(x, y) {
+            const sx = dragStart.x - window.scrollX;
+            const sy = dragStart.y - window.scrollY;
             return {
-                left: Math.min(dragStart.x, evt.clientX), right: Math.max(dragStart.x, evt.clientX),
-                top: Math.min(dragStart.y, evt.clientY), bottom: Math.max(dragStart.y, evt.clientY),
+                left: Math.min(sx, x), right: Math.max(sx, x),
+                top: Math.min(sy, y), bottom: Math.max(sy, y),
             };
+        }
+
+        function updateBand() {
+            const r = bandRect(lastMouse.x, lastMouse.y);
+            highlight.style.display = 'none';
+            band.style.display = 'block';
+            band.style.left = `${r.left}px`; band.style.top = `${r.top}px`;
+            band.style.width = `${r.right - r.left}px`; band.style.height = `${r.bottom - r.top}px`;
+            tip.style.left = `${Math.min(window.innerWidth - 260, Math.max(8, r.left))}px`;
+            tip.style.top = `${Math.max(8, r.top - 36)}px`;
+            // Full-DOM scan: throttled, the exact count is recomputed on release.
+            const now = Date.now();
+            if (now - lastCountAt < 100) return;
+            lastCountAt = now;
+            tip.textContent = `${findEd2kLinksInRect(r).length} lien(s) ed2k encadré(s) - relâche pour valider, Esc pour annuler`;
+        }
+
+        // Scrolls the page while the cursor is near the top/bottom edge during a drag.
+        function autoScroll() {
+            scrollRaf = 0;
+            if (!dragging) return;
+            const edge = 50;
+            let dy = 0;
+            if (lastMouse.y < edge) dy = -(2 + 23 * (edge - Math.max(0, lastMouse.y)) / edge);
+            else if (lastMouse.y > window.innerHeight - edge) dy = 2 + 23 * (lastMouse.y - (window.innerHeight - edge)) / edge;
+            if (dy) {
+                window.scrollBy(0, Math.round(dy));
+                updateBand();
+            }
+            scrollRaf = requestAnimationFrame(autoScroll);
         }
 
         function onMouseDown(evt) {
@@ -736,14 +773,14 @@
             if (evt.target && evt.target.closest && (evt.target.closest('.ed2k-rev-btn') || evt.target.closest('.ed2k-rev-modal'))) return;
             // Stops the browser from starting a native link/text drag, which would swallow mousemove/mouseup.
             evt.preventDefault();
-            dragStart = { x: evt.clientX, y: evt.clientY };
+            dragStart = { x: evt.clientX + window.scrollX, y: evt.clientY + window.scrollY };
             dragging = false;
         }
 
         function onMouseUp(evt) {
             if (!dragStart) return;
             const wasDragging = dragging;
-            const rect = wasDragging ? bandRect(evt) : null;
+            const rect = wasDragging ? bandRect(evt.clientX, evt.clientY) : null;
             dragStart = null;
             dragging = false;
             band.style.display = 'none';
@@ -763,19 +800,15 @@
 
         function onMouseMove(evt) {
             if (dragStart) {
-                if (!dragging && Math.hypot(evt.clientX - dragStart.x, evt.clientY - dragStart.y) < 6) return;
-                dragging = true;
+                lastMouse = { x: evt.clientX, y: evt.clientY };
+                if (!dragging && Math.hypot(evt.clientX + window.scrollX - dragStart.x, evt.clientY + window.scrollY - dragStart.y) < 6) return;
+                if (!dragging) {
+                    dragging = true;
+                    scrollRaf = requestAnimationFrame(autoScroll);
+                }
                 evt.preventDefault();
                 try { window.getSelection().removeAllRanges(); } catch (e) {}
-                const r = bandRect(evt);
-                highlight.style.display = 'none';
-                band.style.display = 'block';
-                band.style.left = `${r.left}px`; band.style.top = `${r.top}px`;
-                band.style.width = `${r.right - r.left}px`; band.style.height = `${r.bottom - r.top}px`;
-                const picked = findEd2kLinksInRect(r).length;
-                tip.style.left = `${Math.min(window.innerWidth - 260, Math.max(8, r.left))}px`;
-                tip.style.top = `${Math.max(8, r.top - 36)}px`;
-                tip.textContent = `${picked} lien(s) ed2k encadré(s) - relâche pour valider, Esc pour annuler`;
+                updateBand();
                 return;
             }
             const target = evt.target;
@@ -787,7 +820,7 @@
         }
 
         function onWheel(evt) {
-            if (!currentCandidates.length) return;
+            if (dragging || !currentCandidates.length) return;
             evt.preventDefault();
             evt.stopPropagation();
             const dir = evt.deltaY > 0 ? 1 : -1;
