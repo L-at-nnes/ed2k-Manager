@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ed2k Manager
 // @namespace    https://github.com/L-at-nnes/ed2k-Manager
-// @version      1.6.1
+// @version      1.6.2
 // @description  Reveal ed2k links on any page with robust decoding, advanced tome extraction, and external hash comparison.
 // @author       L@nnes
 // @homepageURL  https://github.com/L-at-nnes/ed2k-Manager
@@ -507,7 +507,7 @@
     table.ed2k-table th, table.ed2k-table td{padding:10px 8px;border:none;border-bottom:1px dashed rgba(255,255,255,0.03);}
     table.ed2k-table th{color:#9aa4b2;text-align:left;font-size:12px}
     table.ed2k-table input[type="checkbox"]{width:15px;height:15px;margin:0;accent-color:#2ad0e6;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.25);border-radius:4px;cursor:pointer}
-    .ed2k-row-name{color:#e6eef8;font-weight:600}
+    .ed2k-row-name{color:#e6eef8;font-weight:600;white-space:pre-wrap}
     .ed2k-controls{display:flex;gap:8px}
     .ed2k-btn{padding:6px 10px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04);color:#cfe8f6;cursor:pointer}
     .ed2k-btn.primary{background:linear-gradient(90deg,#5fd6f6,#60a5fa);color:#022;border:none}
