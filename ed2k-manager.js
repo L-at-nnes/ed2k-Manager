@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ed2k Manager
 // @namespace    https://github.com/L-at-nnes/ed2k-Manager
-// @version      1.6.2
+// @version      1.6.3  
 // @description  Reveal ed2k links on any page with robust decoding, advanced tome extraction, and external hash comparison.
 // @author       L@nnes
 // @homepageURL  https://github.com/L-at-nnes/ed2k-Manager
@@ -1305,6 +1305,7 @@
                     nameDiv.style.opacity = '0.72';
                 }
                 nameDiv.title = 'Cliquer pour copier le lien';
+                nameDiv._ed2kName = it.name;
                 nameDiv.addEventListener('click', async (evt) => {
                     const selectedText = String(window.getSelection ? window.getSelection().toString() : '');
                     if (renamePanel.classList.contains('open') && selectedText.trim()) {
@@ -2120,6 +2121,24 @@
         function onEsc(e){ if ((e.key === 'Escape' || e.key === 'Esc') && !self.classList.contains('minimized')) { destroy(); } }
         document.addEventListener('keydown', onEsc);
 
+        // Keep "Texte à remplacer" in sync when the selection inside a name changes
+        // (e.g. extended with Shift+Arrow), not only on mouse click.
+        function onSelectionChange() {
+            if (!renamePanel.classList.contains('open')) return;
+            const sel = window.getSelection && window.getSelection();
+            if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+            const toEl = (n) => (n && n.nodeType === 1 ? n : (n && n.parentElement));
+            const nameEl = toEl(sel.anchorNode) && toEl(sel.anchorNode).closest('.ed2k-row-name');
+            if (!nameEl || nameEl !== (toEl(sel.focusNode) && toEl(sel.focusNode).closest('.ed2k-row-name'))) return;
+            const text = sel.toString();
+            const full = nameEl._ed2kName || '';
+            const matched = full.includes(text) ? text : (full.includes(text.trim()) ? text.trim() : null);
+            if (!matched || matched === renameFindInput.value) return;
+            renameFindInput.value = matched;
+            updateRenameStatus();
+        }
+        document.addEventListener('selectionchange', onSelectionChange);
+
         // initial render
         updateMemoryModeUi();
         updateHashStatus();
@@ -2134,6 +2153,7 @@
             if (destroyed) return;
             destroyed = true;
             document.removeEventListener('keydown', onEsc);
+            document.removeEventListener('selectionchange', onSelectionChange);
             document.removeEventListener('click', onOutsideMenusClick);
             try { obs.disconnect(); } catch (e) {}
             try { self.remove(); } catch (e) {}
